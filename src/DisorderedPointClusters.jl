@@ -52,7 +52,7 @@ export generateDisorderedPointClusters
       xvarz = []
       for i in 1:NLayers
         for j in 1:NGrid^2
-          if (i-1,j) in NeckCables || i==1 && (NLayers,j) in NeckCables
+          if any(t->(t[1]==i-1||i==1&&t[1]==NLayers) && t[2]==j,NeckCables) || i==1 && (NLayers,j) in NeckCables
             continue
           else
             append!(initialPoint, unitGrid[(i-1)*NGrid^2+j][1:2])
@@ -69,7 +69,7 @@ export generateDisorderedPointClusters
       σ1 = 1/(1*NGrid^2)
       σ2 = 1/(2*NGrid^2)
       #TODO add a higher/lower factor for necks.
-      lennardJones = 4*sum((σ1/d)^6-(σ1/d)^3 for d in dist) + 4*sum((σ2/d)^6-(σ2/d)^3 for d in distBoundary) + 0.025*sum((1.8*σ1/d)^6-(1.8*σ1/d)^3 for d in NeckEquations)
+      lennardJones = 4*sum((σ1/d)^6-(σ1/d)^3 for d in dist) + 4*sum((σ2/d)^6-(σ2/d)^3 for d in distBoundary) + 0.02*sum((1.8*σ1/d)^6-(1.8*σ1/d)^3 for d in NeckEquations)
       ∇Q = differentiate(lennardJones, xvarz)
       HessQ = differentiate(differentiate(lennardJones, xvarz), xvarz)
       result = gradientdescent(∇Q, HessQ, xvarz, initialPoint)
