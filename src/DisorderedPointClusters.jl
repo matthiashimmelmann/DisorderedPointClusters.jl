@@ -1,7 +1,7 @@
 module DisorderedPointClusters
 
 import GLMakie: scatter!, Axis3, Figure, Point3f
-import LinearAlgebra: norm
+import LinearAlgebra: norm, det
 import HomotopyContinuation: Variable, Expression, evaluate, differentiate
 
 export generateDisorderedPointClusters
@@ -20,6 +20,7 @@ export generateDisorderedPointClusters
       end
     end
 
+    #=
     function generateMatrix(NLayers, NGrid, NNecks, NeckCables)
       xs=Array{Expression,3}(undef, NLayers, NGrid^2, 3)
       for (i,j) in [(a,b) for a in 1:NLayers for b in 1:NGrid^2]
@@ -32,13 +33,27 @@ export generateDisorderedPointClusters
         xs[cable[1]==NLayers ? 1 : cable[1]+1, cable[2], 1:2] = xs[cable[1], cable[2], 1:2]
       end
       return(xs)
+    end=#
+
+    function generateMatrix(NLayers, NGrid, NNecks)
+      xs=Array{Expression,3}(undef, NLayers, NGrid^2+2*NNecks, 3)
+      for (i,j) in [(a,b) for a in 1:NLayers for b in 1:NGrid^2+NNecks]
+        xs[i,j,1] = Variable(:x, i, j, 1)
+        xs[i,j,2] = Variable(:x, i, j, 2)
+        xs[i,:,3] .= (0:1/NLayers:1-1/NLayers)[i]
+      end
+
+      for layer in 1:NLayers, i in NGrid^2+NNecks+1:NGrid^2+2*NNecks
+        xs[layer==NLayers ? 1 : layer+1, i, 1:2] = xs[layer, i-NNecks, 1:2]
+      end
+      return(xs)
     end
 
     function gradientDescent(initialPoint, periodic_xs, xvarz, σ1)
       cursol = Base.copy(initialPoint)
       global ∇Q, HessQ = energyFunction(periodic_xs, xvarz, σ1, cursol)
       while norm(∇Q)>1e-5
-        cursol = cursol - HessQ\∇Q
+        cursol = det(HessQ)==0 ? cursol - 1e-6*∇Q : cursol - HessQ\∇Q
         cursol = cursol - floor.(cursol)
         global ∇Q, HessQ = energyFunction(periodic_xs, xvarz, σ1, cursol)
         display(norm(∇Q))
@@ -55,12 +70,38 @@ export generateDisorderedPointClusters
         end
       end
       distances = [sum((periodic_xs[layer,i,:] - periodic_xs[layer,j,:]).^2) for (layer,i,j) in list_of_relevant_molecule_interactions]
-      lennardJones = 4*sum((σ1/d)^6-(σ1/d)^3 for d in distances) #+ 4*sum((σ2/d)^6-(σ2/d)^3 for d in distBoundary) + 0.03*sum((1.5*σ1/d)^6-(1.5*σ1/d)^3 for d in NeckEquations)
+      lennardJones = 4*sum((σ1/d)^6-(σ1/d)^3 for d in distances) #TODO ADD DIFFERENT NUMBER FOR NECKS -> REPULSION
       ∇Q = differentiate(lennardJones, xvarz)
       HessQ = differentiate(∇Q, xvarz)
       return evaluate(∇Q, xvarz=>pt), evaluate(HessQ, xvarz=>pt)
     end
 
+    function simulateRepulsion(unitGrid, randomGrid, NLayers, NGrid, NNecks)
+      initialPoint = Vector{Float64}([])
+      xvarz = Vector{Variable}([])
+      for i in 1:NLayers, j in 1:NGrid^2+NNecks
+        append!(xvarz, [Variable(:x, i, j, 1), Variable(:x, i, j, 2)])
+        j<=NGrid^2 ? append!(initialPoint, unitGrid[(i-1)*NGrid^2+j][1:2]) : append!(initialPoint, randomGrid[(i-1)*NNecks+j-NGrid^2][1:2])
+      end
+
+
+      xs = generateMatrix(NLayers, NGrid, NNecks)
+      display(evaluate.(xs,xvarz=>initialPoint))
+      periodic_xs = Array{Expression,3}(undef, size(xs)[1], size(xs)[2]*9, 3)
+      #left to right, bottom to top 1-9
+      for i in 1:9
+        periodic_xs[:,(i-1)*size(xs)[2]+1:i*size(xs)[2], :] = xs
+        periodic_xs[:,(i-1)*size(xs)[2]+1:i*size(xs)[2], 1] .+= (i-1)%3-1
+        periodic_xs[:,(i-1)*size(xs)[2]+1:i*size(xs)[2], 2] .+= Int(floor((i-1)/3))-1
+      end
+
+      #TODO improve performance by only looking at close neighbors
+      σ1 = 1/((1+NNecks/NGrid)*NGrid^2)
+      result = gradientDescent(initialPoint, periodic_xs, xvarz, σ1)
+
+      return(evaluate.(xs, xvarz=>result))
+    end
+    #=
     function simulateRepulsion(unitGrid, NLayers, NGrid, NeckCables, NNecks)
       initialPoint = Vector{Float64}([])
       xvarz = Vector{Variable}([])
@@ -85,37 +126,40 @@ export generateDisorderedPointClusters
       result = gradientDescent(initialPoint, periodic_xs, xvarz, σ1)
 
       return(evaluate.(xs, xvarz=>result))
-    end
+    end=#
 
     function generateDisorderedPointClusters(NGrid::Int, NNecks::Int, NLayers::Int)
       NLayers%2==0 || throw(error("There must be an even number of layers!"))
 
-      layers = [(i%2==1 ? ones(NGrid^2) : 2*ones(NGrid^2)) for i in 1:NLayers]
+      layers = [(i%2==1 ? ones(NGrid^2+2*NNecks) : 2*ones(NGrid^2+2*NNecks)) for i in 1:NLayers]
+      for layer in 1:NLayers
+        layers[layer][NGrid^2+1:NGrid^2+NNecks] = 3 .- layers[layer][NGrid^2+1:NGrid^2+NNecks]
+      end
       unitGrid = [Point3f(a,b,c) for c in 0:1/NLayers:1-1/NLayers for a in 1/(2*NGrid):1/NGrid:1-1/(2*NGrid) for b in 1/(2*NGrid):1/NGrid:1-1/(2*NGrid) ]
       #TODO add NLayer many random points (Necks)
-      #=randomGrid=[]
+      randomGrid=[]
       for i in 1:NLayers
         for j in 1:NNecks
           push!(randomGrid, Point3f(rand(),rand(),(i-1)/NLayers))
         end
-      end=#
-      NeckCables=[]
+      end
+      #=NeckCables=[]
       foreach(curLayer->
               foreach(curNeck->insertNecks(layers, curLayer, NGrid, NeckCables), 1:NNecks),
           1:NLayers)
-      correctedGrid = simulateRepulsion(unitGrid, NLayers, NGrid, NeckCables, NNecks)
+      correctedGrid = simulateRepulsion(unitGrid, NLayers, NGrid, NeckCables, NNecks)=#
 
-      #correctedGrid = simulateRepulsion(unitGrid, randomGrid, NLayers, NGrid, NNecks)
+      correctedGrid = simulateRepulsion(unitGrid, randomGrid, NLayers, NGrid, NNecks)
       fig = Figure()
       ax = Axis3(fig[1,1])
 
-      foreach(k -> scatter!(ax, Point3f(correctedGrid[k[1],k[2],:]), color=layers[k[1]][k[2]] == 1.0 ? :red : :blue), [(i,j) for i in 1:NLayers for j in 1:NGrid^2])
+      foreach(k -> scatter!(ax, Point3f(correctedGrid[k[1],k[2],:]), color=layers[k[1]][k[2]] == 1.0 ? :red : :blue), [(i,j) for i in 1:size(correctedGrid)[1] for j in 1:size(correctedGrid)[2]])
       display(fig)
 
-      foreach(k->println(correctedGrid[k[1],k[2],1], " ", correctedGrid[k[1],k[2],2], " ", correctedGrid[k[1],k[2],3], " ", layers[k[1]][k[2]] == 1.0 ? 1 : 2), [(i,j) for i in 1:NLayers for j in 1:NGrid^2])
+      foreach(k->println(correctedGrid[k[1],k[2],1], " ", correctedGrid[k[1],k[2],2], " ", correctedGrid[k[1],k[2],3], " ", layers[k[1]][k[2]] == 1.0 ? 1 : 2), [(i,j) for i in 1:size(correctedGrid)[1] for j in 1:size(correctedGrid)[2]])
     end
 
 
-    generateDisorderedPointClusters(6, 8, 6)
+    generateDisorderedPointClusters(3, 2, 2)
 
 end
