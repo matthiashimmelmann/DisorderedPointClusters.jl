@@ -77,14 +77,17 @@ export generateDisorderedPointClusters
         end
       end
       distances = [sum((periodic_xs[i,:] - periodic_xs[j,:]).^2) for (i,j) in list_of_relevant_molecule_interactions]
-      #boundarydistances = vcat([[(periodic_xs[i,1]-1)^2, (periodic_xs[i,1])^2, (periodic_xs[i,2]-1)^2, (periodic_xs[layer,i,2])^2] for layer in 1:size(eval_periodic_xs)[1] for i in Int(4*size(periodic_xs)[2]/9)+1:Int(5*size(periodic_xs)[2]/9)]...)
-      lennardJones = sum((σ1/d)^6-(σ1/d)^3 for d in distances) #TODO ADD DIFFERENT NUMBER FOR NECKS -> REPULSION
-      #lennardJones = sum(1/d for d in distances)
+      #boundarydistances = vcat([[(periodic_xs[i,1]-1.)^2, (periodic_xs[i,1])^2, (periodic_xs[i,2]-1.)^2, (periodic_xs[i,2])^2] for i in Int(4*size(periodic_xs)[1]/9)+1:Int(5*size(periodic_xs)[1]/9)]...)
+      lennardJones = sum(((σ1/d)^6-(σ1/d)^3 for d in distances)) #TODO ADD DIFFERENT NUMBER FOR NECKS -> REPULSION
+      #Boundaries = sum(1/d^2 for d in boundarydistances)
       ∇Q = differentiate(lennardJones, xvarz)
       HessQ = differentiate(∇Q, xvarz)
       while norm(evaluate(∇Q, xvarz=>cursol))>1e-4
-        cursol = cursol - pinv(evaluate(HessQ, xvarz=>cursol))*evaluate(∇Q, xvarz=>cursol)
-        cursol = cursol - floor.(cursol)
+        cursol = cursol - 0.5*pinv(evaluate(HessQ, xvarz=>cursol))*evaluate(∇Q, xvarz=>cursol)
+        if any(t->t<0||t>1,cursol)
+          display("Left Torus")
+          cursol = cursol - floor.(cursol)
+        end
         display(norm(evaluate(∇Q, xvarz=>cursol)))
       end
       return(cursol)
@@ -251,9 +254,20 @@ export generateDisorderedPointClusters
       ax = Axis3(fig[1,1])
 
       layers = [[] for _ in 1:length(gridArray)]
+      numbersInGrid = [[i for i in 1:size(gridArray[layer])[1]] for layer in 1:length(gridArray)]
       for i in 1:length(gridArray)
         layers[i] = [i%2 for _ in 1:size(gridArray[i])[1]]
-        layers[i][shuffle(1:size(gridArray[i])[1])[1:NNecks]] .= 1-i%2
+        for j in 1:NNecks
+          randPos = rand(numbersInGrid[i])
+          display(randPos)
+          layers[i][randPos] = 1-layers[i][randPos]
+          numbersInGrid[i] = filter(t-> t!=randPos, numbersInGrid[i])
+          if i!=length(gridArray)
+            numbersInGrid[i+1] = filter(t-> t!=randPos, numbersInGrid[i+1])
+          end
+        end
+        println(numbersInGrid[i])
+        #layers[i][shuffle(1:size(gridArray[i])[1])[1:NNecks]] .= 1-i%2
       end
       println(layers)
 
@@ -265,5 +279,5 @@ export generateDisorderedPointClusters
 
 
 
-    generateDisorderedPointClusters(9, 5, 8)
+    generateDisorderedPointClusters(8, 3, 8)
 end
