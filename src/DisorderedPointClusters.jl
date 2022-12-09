@@ -1,7 +1,7 @@
 module DisorderedPointClusters
 
-import GLMakie: scatter!, Axis3, Figure, Point3f
-import LinearAlgebra: norm, det, pinv
+import GLMakie: scatter!, Axis3, Figure, Point3f0, Scene, cam3d!
+import LinearAlgebra: norm, det, pinv, svd
 import HomotopyContinuation: Variable, Expression, evaluate, differentiate
 import Random: shuffle
 
@@ -38,18 +38,44 @@ export generateDisorderedPointClusters
       end
 
       distances = [sum((periodic_xs[i,:] - periodic_xs[j,:]).^2) for (i,j) in list_of_relevant_molecule_interactions]
-      lennardJones = sum(((σ1/d)^6-(σ1/d)^3 for d in distances)) #TODO repulsion/attraction between necks?
+      #=lennardJones = sum(((σ1/d)^6-(σ1/d)^3 for d in distances)) #TODO repulsion/attraction between necks?
       ∇Q = differentiate(lennardJones, xvarz)
+      HessQ = differentiate(∇Q, xvarz)=#
+      riesz = sum([1/d for d in distances])
+      ∇Q = differentiate(riesz, xvarz)
       HessQ = differentiate(∇Q, xvarz)
-
-      while norm(evaluate(∇Q, xvarz=>cursol))>1e-4
+      savepoint = [randn(Float64) for _ in 1:length(cursol)]
+      index = 0
+      isMin = 0
+      while index < 10000
+        index = index+1;
+        if index%30 == 0
+          cursol = cursol - 1e-6*[rand(Float64) for _ in 1:length(cursol)]
+        end
         cursol = cursol - 0.5*pinv(evaluate(HessQ, xvarz=>cursol))*evaluate(∇Q, xvarz=>cursol)
         if any(t->t<0||t>1,cursol)
           display("Left the Torus")
           cursol = cursol - floor.(cursol)
         end
         display(norm(evaluate(∇Q, xvarz=>cursol)))
+        if norm(evaluate(∇Q, xvarz=>cursol))<=1e-6 && (all(t-> t>1e-6, svd(evaluate(HessQ, xvarz=>cursol)).S))
+          break;
+        elseif norm(evaluate(∇Q, xvarz=>cursol))<=1e-6 && isapprox(cursol,savepoint; atol=1e-3)
+          isMin = isMin + 1; 
+          if isMin == 2
+            break;
+          end
+        elseif norm(evaluate(∇Q, xvarz=>cursol))<=1e-6
+          isMin = 0
+          savepoint = cursol
+          cursol = cursol - 1e-6*[rand(Float64) for _ in 1:length(cursol)]
+          if any(t->t<0||t>1,cursol)
+            display("Left the Torus")
+            cursol = cursol - floor.(cursol)
+          end
+        end
       end
+
 
       return(cursol)
     end
@@ -88,7 +114,7 @@ export generateDisorderedPointClusters
 
     # All points that are close enough are returned
     function calculateAdjacents(pos, grid)
-      σ = 2^(1/6)/((sqrt(size(grid)[1])))
+      σ = 2^(1/6)/sqrt(size(grid)[1])
       indices = findall(t->
         any(q->norm(t-grid[pos,:]+q)<σ, [[a%3-1, floor((a-1)/3)-1, 0.] for a in 1:9]),
         [grid[i,:] for i in 1:size(grid)[1]])
@@ -101,7 +127,7 @@ export generateDisorderedPointClusters
       maxNumberPoints = NGrid+2*NNecks
       nextGridNumber = ceil(sqrt(maxNumberPoints)) #Calculate the next highest perfect square's square root.
       gridArray = []
-      unitGrid = [Point3f(a,b,c) for c in 0:1/NLayers:(NLayers-1)/NLayers for a in 1/(2*nextGridNumber):1/nextGridNumber:1-1/(2*nextGridNumber) for b in 1/(2*nextGridNumber):1/nextGridNumber:1-1/(2*nextGridNumber)]#[vcat([Int(nextGridNumber^2*(layer-1)+1):Int(nextGridNumber^2*(layer-1)+totalNumberPoints) for layer in 1:NLayers]...)]
+      unitGrid = [Point3f0(a,b,c) for c in 0:1/NLayers:(NLayers-1)/NLayers for a in 1/(2*nextGridNumber):1/nextGridNumber:1-1/(2*nextGridNumber) for b in 1/(2*nextGridNumber):1/nextGridNumber:1-1/(2*nextGridNumber)]#[vcat([Int(nextGridNumber^2*(layer-1)+1):Int(nextGridNumber^2*(layer-1)+totalNumberPoints) for layer in 1:NLayers]...)]
 
       correctedGrid = simulateRepulsion(unitGrid, NGrid, NNecks, [], 1, NLayers)
       for z in 0:1/NLayers:(NLayers-1)/NLayers
@@ -111,27 +137,39 @@ export generateDisorderedPointClusters
         push!(gridArray, helperGrid)
       end
 
-      fig = Figure()
-      ax = Axis3(fig[1,1])
-
+      scene = Scene()
+      cam3d!(scene)
       #NOTE Now we insert the Necks
-      layers = [[] for _ in 1:length(gridArray)]
       numbersInGrid = [[i for i in 1:size(gridArray[layer])[1]] for layer in 1:length(gridArray)]
-      for i in 1:length(gridArray)
-        layers[i] = [i%2 for _ in 1:size(gridArray[i])[1]]
-        for j in 1:NNecks
-          randPos = rand(numbersInGrid[i])
-          layers[i][randPos] = 1-layers[i][randPos]
-          numbersInGrid[i] = filter(t-> !(t in calculateAdjacents(randPos, gridArray[i])), numbersInGrid[i])
-          numbersInGrid[i+1] = i!=length(gridArray) ? filter(t-> t!=randPos, numbersInGrid[i+1]) : numbersInGrid[i+1]
+      layers = [[i%2 for _ in 1:length(numbersInGrid[i])] for i in 1:length(gridArray)]
+      lengthVector = [NNecks for _ in 1:length(gridArray)]
+      for _ in 1:30
+        try 
+          for i in 1:length(gridArray)
+            for _ in 1:lengthVector[i]
+              randPos = rand(numbersInGrid[i])
+              layers[i][randPos] = 1-layers[i][randPos]
+              numbersInGrid[i] = filter(t-> !(t in calculateAdjacents(randPos, gridArray[i])), numbersInGrid[i])
+              numbersInGrid[i!=length(gridArray) ? i+1 : 1] = filter(t-> t!=randPos, numbersInGrid[i!=length(gridArray) ? i+1 : 1])
+              numbersInGrid[i!=1 ? i-1 : length(gridArray)] = filter(t-> t!=randPos, numbersInGrid[i!=1 ? i-1 : length(gridArray)])
+              numbersInGrid[(i < length(gridArray)-1) ? i+2 : (i!=length(gridArray) ? 1 : 2)] = filter(t-> t!=randPos, numbersInGrid[(i!=length(gridArray) && i!=length(gridArray)-1) ? i+2 : (i!=length(gridArray) ? 1 : 2)])
+              numbersInGrid[(i > 2) ? i-2 : (i!=1 ? length(gridArray) : length(gridArray)-1)] = filter(t-> t!=randPos, numbersInGrid[(i > 2) ? i-2 : (i!=1 ? length(gridArray) : length(gridArray)-1)])
+            end
+          end
+          break;
+        catch e
+          numbersInGrid = [[i for i in 1:size(gridArray[layer])[1]] for layer in 1:length(gridArray)]
+          layers = [[i%2 for _ in 1:length(numbersInGrid[i])] for i in 1:length(gridArray)]    
+          continue;
         end
-      end
-
-      foreach(k -> scatter!(ax, Point3f(gridArray[k[2]][k[1],:]), color=layers[k[2]][k[1]] == 1 ? :red : :blue), [(i,j) for i in 1:size(gridArray[1])[1] for j in 1:length(gridArray)])
-      display(fig)
+      end   
+      #for posi in 1:9
+        foreach(k -> scatter!(scene, Point3f0(gridArray[k[2]][k[1],:]#=+[(posi-1)%3+1,floor((posi-1)/3),0]=#), color=layers[k[2]][k[1]] == 1 ? :red : :blue), [(i,j) for i in 1:size(gridArray[1])[1] for j in 1:length(gridArray)])
+      #end
+      display(scene)
       foreach(k->println(gridArray[k[2]][k[1],1], " ", gridArray[k[2]][k[1],2], " ", gridArray[k[2]][k[1],3], " ", layers[k[2]][k[1]] == 1 ? "1" : "2"), [(i,j) for i in 1:size(gridArray[1])[1] for j in 1:length(gridArray)])
     end
 
 
-    generateDisorderedPointClusters(16, 6, 8)
+    generateDisorderedPointClusters(8, 4, 4)
 end
