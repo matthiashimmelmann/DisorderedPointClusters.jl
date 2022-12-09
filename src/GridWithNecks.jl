@@ -144,12 +144,15 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
     scene2 = Scene()
     cam3d!(scene2)
     layerColours = colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neckSize)
-    foreach(k->println(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "1" : "2"), [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid for layer in 1:NLayers])
-
+    open("pomelocoordinates.txt", "w") do io
+        for k in [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid for layer in 1:NLayers]
+            write(io, string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "1" : "2", "\n"))
+        end
+    end;
     foreach(k -> scatter!(scene2, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue), [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid for layer in 1:NLayers ])
     display(scene2)
 end
 
-generateGridLayers(50, 3, 4, 4)
+generateGridLayers(35, 3, 4, 3)
 
 end
