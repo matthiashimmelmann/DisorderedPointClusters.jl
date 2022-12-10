@@ -1,5 +1,5 @@
-module GridWithNecks
-#Interactions are taken per 3 consecutive 2D-layers
+module GridWithNecks2
+#Interactions are only considered in 3D with vertices pinned to planes
 
 import GLMakie: scatter!, Axis3, Figure, Point3f0, Scene, cam3d!
 import LinearAlgebra: norm, det, pinv, svd
@@ -16,10 +16,10 @@ function createStar(neckCenter, neckSize, NGrid)
 end
 
 function colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neckSize)
-    xs_eval = Array{Any,3}(undef, size(layerColours)[1], Int(size(xs)[2]/3), 3)
-    xs_eval[:,:,1:2] = evaluate.(xs, xvarz=>neckConfig)[:,1:Int(size(xs)[2]/3),:]
+    xs_eval = Array{Any,3}(undef, size(layerColours)[1], size(xs)[2], 3)
+    xs_eval[:,:,1:3] = evaluate.(xs, xvarz=>neckConfig)
     for layer in 1:size(layerColours)[1]
-        xs_eval[layer,:,3] .= (layer)/size(layerColours)[1]
+        xs_eval[layer,:,3] .= layer/size(layerColours)[1]
         for pos in 1:size(xs_eval)[2] 
             neckCenter = filter(t->isapprox(xs_eval[layer,pos,1:2], totalGrid[layer,t[1],t[2],1:2]; atol=1e-3), [(i,j) for i in 1:size(layerColours)[2] for j in 1:size(layerColours)[3]])[1]
             display(xs_eval[layer, pos, :])
@@ -46,20 +46,18 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     cursol = Base.copy(initialPoint)
     list_of_relevant_molecule_interactions = []
 
-    for layer in 1:size(periodic_xs)[1], pos_torus in Int(4*size(periodic_xs)[2]/9)+1:Int(5*size(periodic_xs)[2]/9), pos_general in 1:size(periodic_xs)[2]
-        #TODO prioritize interactions in the same layer
-        if pos_torus!=pos_general && all(t->t[2]!=pos_general||t[3]!=pos_torus, list_of_relevant_molecule_interactions)
-            push!(list_of_relevant_molecule_interactions, (layer, pos_torus, pos_general))
-        end
+    for layer1 in 1:size(periodic_xs)[1], layer2 in 1:size(periodic_xs)[1], pos_torus in Int(4*size(periodic_xs)[2]/9)+1:Int(5*size(periodic_xs)[2]/9), pos_general in 1:size(periodic_xs)[2]
+      if (pos_torus!=pos_general || layer1!=layer2) && all(t->t[3]!=pos_general||t[4]!=pos_torus||t[1]!=layer2||t[2]!=layer1, list_of_relevant_molecule_interactions)
+        push!(list_of_relevant_molecule_interactions, (layer1, layer2, pos_torus, pos_general))
+      end
     end
-    println(list_of_relevant_molecule_interactions)
 
-    distances = [sum((periodic_xs[layer,pos1,:] - periodic_xs[layer,pos2,:]).^2) for (layer, pos1, pos2) in list_of_relevant_molecule_interactions]
+    distances = [sum((periodic_xs[layer1,pos1,:] - periodic_xs[layer2,pos2,:]).^2) for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
     Q=0;
     if energy == "riesz"
         Q = sum([1/d^2 for d in distances])
     elseif energy == "lennardjones"
-        σ1 = 1/((sqrt(size(periodic_xs)[2]/9)*3))
+        σ1 = 1/((sqrt(size(periodic_xs)[2]/9)))
         Q = sum(((σ1/d)^6-(σ1/d)^3 for d in distances))
     end
     ∇Q = differentiate(Q, variables)
@@ -71,7 +69,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
         cursol = cursol - 0.4*pinv(evaluate(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
         cursol = iter%250 == 0 ? backToTorus!(mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid)) : cursol
         cursol = iter%75 == 0 ? cursol - 5e-2*rand(Float64, length(cursol)) : cursol
-        cursol = backToTorus!(cursol)
+        backToTorus!(cursol)
 
         if norm(evaluate(∇Q, variables=>cursol))<=1e-6 && (all(t-> t>1e-8, svd(evaluate(HessQ, variables=>cursol)).S))
             display("Minimum Found!")
@@ -83,7 +81,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
                 break;
             end
             cursol = cursol - 5e-2*rand(Float64, length(cursol))
-            cursol = backToTorus!(cursol)
+            backToTorus!(cursol)
         end
     end
 
@@ -111,14 +109,13 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
         end
     end
 
-    xs = Array{Any,3}(undef, NLayers, NNecks*3, 2)
+    xs = Array{Expression,3}(undef, NLayers, NNecks, 3)
     for layer in 1:NLayers
         xs[layer,1:NNecks,1:2] = [Variable(:x,layer,neck,xy) for xy in 1:2 for neck in 1:NNecks]
-        xs[(layer<NLayers ? layer+1 : 1),NNecks+1:2*NNecks,1:2] = [Variable(:x,layer,neck,xy) for xy in 1:2 for neck in 1:NNecks]
-        xs[(layer>1 ? layer-1 : NLayers),2*NNecks+1:3*NNecks,1:2] = [Variable(:x,layer,neck,xy) for xy in 1:2 for neck in 1:NNecks]
+        xs[layer,:,3] .= layer/NLayers
     end
     
-    periodic_xs = Array{Expression,3}(undef, NLayers, size(xs)[2]*9, 2)
+    periodic_xs = Array{Expression,3}(undef, NLayers, size(xs)[2]*9, 3)
     #NOTE left to right 1-2-3, bottom to top 1-4-7
     for torus in 1:9
         periodic_xs[:, (torus-1)*size(xs)[2]+1:torus*size(xs)[2], :] = xs
@@ -127,15 +124,6 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
     end
     
     neckConfig = gradientDescent(periodic_xs, initialPoint, xvarz, NGrid; energy = "riesz")#"lennardjones"
-    xs_eval = Array{Any,3}(undef, NLayers, 3*NNecks, 3)
-    xs_eval[:,:,1:2] = evaluate.(xs, xvarz=>neckConfig)[:, :, 1:2]
-    for layer in 1:NLayers
-        xs_eval[layer,:,3] .= layer/NLayers
-    end
-    #=scene = Scene()
-    cam3d!(scene)
-    scatter!(scene, [Point3f0(xs_eval[layer,pos,1:3]) for layer in 1:NLayers for pos in 1:3*NNecks])
-    display(scene)=#
 
     totalGrid = Array{Any,4}(undef, NLayers, NGrid, NGrid, 3)
     layerColours = Array{Any,3}(undef, NLayers, NGrid, NGrid)
