@@ -76,17 +76,9 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
             α>0.5 ? α = 0.5 : nothing
         end
 
-        if norm(evaluate(∇Q, variables=>cursol))<=1e-5 && (all(t-> t>1e-7, svd(evaluate(HessQ, variables=>cursol)).S))
+        if norm(evaluate(∇Q, variables=>cursol)) <= 1e-5
             isNoMin += 1;
             push!(solutionarray, cursol)
-            display("Minimum Found!")
-            cursol = cursol - 1e-1*rand(Float64, length(cursol))
-        elseif norm(evaluate(∇Q, variables=>cursol))<=1e-5
-            isNoMin += 1;
-            push!(solutionarray, cursol)
-            if isNoMin%10==0
-                display("Found no Minimum for 10 times.")
-            end
             cursol = cursol - 1e-1*rand(Float64, length(cursol))
             cursol = cursol - floor.(cursol)
         end
