@@ -32,6 +32,7 @@ function colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neck
 end
 
 function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
+    #TODO take several random start points and do 1100 steps or so?
     cursol = Base.copy(initialPoint)
     list_of_relevant_molecule_interactions = []
 
@@ -57,7 +58,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     prevsol = cursol
     solutionarray = []
 
-    for iter in 1:1100
+    for iter in 1:5100
         println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
         cursol = prevsol - α*stepdirection

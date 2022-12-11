@@ -32,6 +32,7 @@ function colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neck
 end
 
 function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
+    #TODO take several random start points and do 1100 steps or so?
     cursol = Base.copy(initialPoint)
     list_of_relevant_molecule_interactions = []
 
