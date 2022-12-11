@@ -22,8 +22,6 @@ function colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neck
         xs_eval[layer,:,3] .= layer/size(layerColours)[1]
         for pos in 1:size(xs_eval)[2] 
             neckCenter = filter(t->isapprox(xs_eval[layer,pos,1:2], totalGrid[layer,t[1],t[2],1:2]; atol=1e-3), [(i,j) for i in 1:size(layerColours)[2] for j in 1:size(layerColours)[3]])[1]
-            display(xs_eval[layer, pos, :])
-            display(totalGrid[layer, neckCenter[1], neckCenter[2], :])
             indices = createStar(neckCenter, neckSize, size(layerColours)[2])
             for index in indices
                 layerColours[layer, index[1], index[2]] = 1 .- layerColours[layer, index[1], index[2]]
@@ -33,23 +31,14 @@ function colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neck
     return(layerColours)
 end
 
-
-function backToTorus!(cursol)
-    if any(t->t<0||t>1,cursol)
-        #display("Left the Torus")
-        cursol = cursol - floor.(cursol)
-    end
-    return cursol
-end
-
 function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     cursol = Base.copy(initialPoint)
     list_of_relevant_molecule_interactions = []
 
     for layer1 in 1:size(periodic_xs)[1], layer2 in 1:size(periodic_xs)[1], pos_torus in Int(4*size(periodic_xs)[2]/9)+1:Int(5*size(periodic_xs)[2]/9), pos_general in 1:size(periodic_xs)[2]
-      if (pos_torus!=pos_general || layer1!=layer2) && all(t->t[3]!=pos_general||t[4]!=pos_torus||t[1]!=layer2||t[2]!=layer1, list_of_relevant_molecule_interactions)
-        push!(list_of_relevant_molecule_interactions, (layer1, layer2, pos_torus, pos_general))
-      end
+        if (mod(pos_torus, Int(size(periodic_xs)[2]/9))!=mod(pos_general,Int(size(periodic_xs)[2]/9)) || layer1!=layer2)
+            push!(list_of_relevant_molecule_interactions, (layer1, layer2, pos_torus, pos_general))
+        end
     end
 
     distances = [sum((periodic_xs[layer1,pos1,:] - periodic_xs[layer2,pos2,:]).^2) for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
@@ -57,36 +46,55 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     if energy == "riesz"
         Q = sum([1/d^2 for d in distances])
     elseif energy == "lennardjones"
-        σ1 = 1/((sqrt(size(periodic_xs)[2]/9)))
+        σ1 = sqrt(2)/(sqrt(size(periodic_xs)[2]/9))
+        display(σ1)
         Q = sum(((σ1/d)^6-(σ1/d)^3 for d in distances))
     end
     ∇Q = differentiate(Q, variables)
     HessQ = differentiate(∇Q, variables)
     isNoMin = 0
+    α = 0.5
+    prevsol = cursol
+    solutionarray = []
 
-    for iter in 1:1000000
-        println(iter, " ", isNoMin," ",norm(evaluate(∇Q, variables=>cursol)))
-        cursol = cursol - 0.4*pinv(evaluate(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
-        cursol = iter%250 == 0 ? backToTorus!(mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid)) : cursol
-        cursol = iter%75 == 0 ? cursol - 5e-2*rand(Float64, length(cursol)) : cursol
-        backToTorus!(cursol)
-
-        if norm(evaluate(∇Q, variables=>cursol))<=1e-6 && (all(t-> t>1e-8, svd(evaluate(HessQ, variables=>cursol)).S))
-            display("Minimum Found!")
-            break;
-        elseif norm(evaluate(∇Q, variables=>cursol))<=1e-6
-            isNoMin += 1;
-            if isNoMin == 10
-                display("Found no Minimum for 3 times.")
-                break;
-            end
-            cursol = cursol - 5e-2*rand(Float64, length(cursol))
-            backToTorus!(cursol)
+    for iter in 1:1100
+        println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)))
+        stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
+        cursol = prevsol - α*stepdirection
+        α = iter%80 == 0 ? 0.5 : α
+        cursol = iter%530 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
+        cursol = iter%310 == 0 ? cursol - 1e-1*rand(Float64, length(cursol)) : cursol
+        cursol = cursol - floor.(cursol)
+        if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
+            α = α/3
+        else
+            α = 1.1*α
+            α>0.5 ? α = 0.5 : nothing
         end
-    end
 
+        if norm(evaluate(∇Q, variables=>cursol))<=1e-5 && (all(t-> t>1e-7, svd(evaluate(HessQ, variables=>cursol)).S))
+            isNoMin += 1;
+            push!(solutionarray, cursol)
+            display("Minimum Found!")
+            cursol = cursol - 1e-1*rand(Float64, length(cursol))
+        elseif norm(evaluate(∇Q, variables=>cursol))<=1e-5
+            isNoMin += 1;
+            push!(solutionarray, cursol)
+            if isNoMin%10==0
+                display("Found no Minimum for 10 times.")
+            end
+            cursol = cursol - 1e-1*rand(Float64, length(cursol))
+            cursol = cursol - floor.(cursol)
+        end
+        prevsol = cursol
+        push!(solutionarray, cursol)
+    end
+    cursol = solutionarray[argmin([evaluate(Q, variables=>sol) for sol in solutionarray])]
     #Round only in the end to grid
-    return backToTorus!(mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid))
+    cursol = mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid)
+    cursol = cursol - floor.(cursol)
+
+    return cursol
 end
 
 #=NGrid is the edge length of the basic square grid
@@ -123,7 +131,7 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
         periodic_xs[:, (torus-1)*size(xs)[2]+1:torus*size(xs)[2], 2] .+= Int(floor((torus-1)/3))-1
     end
     
-    neckConfig = gradientDescent(periodic_xs, initialPoint, xvarz, NGrid; energy = "riesz")#"lennardjones"
+    neckConfig = gradientDescent(periodic_xs, initialPoint, xvarz, NGrid; energy = "lennardjones")#"lennardjones"
 
     totalGrid = Array{Any,4}(undef, NLayers, NGrid, NGrid, 3)
     layerColours = Array{Any,3}(undef, NLayers, NGrid, NGrid)
@@ -145,6 +153,6 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
     display(scene2)
 end
 
-generateGridLayers(50, 4, 4, 4)
+generateGridLayers(50, 4, 2, 5)
 
 end
