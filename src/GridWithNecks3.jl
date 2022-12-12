@@ -46,7 +46,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     distances = [sum((periodic_xs[layer1,pos1,1:2] - periodic_xs[layer2,pos2,1:2]).^2) for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
     Q=0;
     if energy == "riesz"
-        Q = sum([1/d^2 for d in distances])
+        Q = sum([1/d for d in distances])
     elseif energy == "lennardjones"
         σ1 = sqrt(2)/((sqrt(size(periodic_xs)[2]/9*size(periodic_xs)[1])))
         display(σ1)
@@ -55,34 +55,35 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     ∇Q = differentiate(Q, variables)
     HessQ = differentiate(∇Q, variables)
     isNoMin = 0
-    α = 0.5
+    α = 0.025
     prevsol = cursol
     solutionarray = []
 
-    for iter in 1:5100
+    for iter in 1:2100
         println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
+        stepdirection = stepdirection ./ norm(stepdirection)
         cursol = prevsol - α*stepdirection
-        α = iter%80 == 0 ? 0.5 : α
-        cursol = iter%530 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
-        cursol = iter%310 == 0 ? cursol - 1e-1*rand(Float64, length(cursol)) : cursol
+        α = iter%80 == 0 ? 0.025 : α
+        cursol = iter%380 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
+        cursol = iter%140 == 0 ? cursol - 5e-2*rand(Float64, length(cursol)) : cursol
         cursol = cursol - floor.(cursol)
         if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
             α = α/3
         else
             α = 1.1*α
-            α>0.5 ? α = 0.5 : nothing
+            α>0.05 ? α = 0.05 : nothing
         end
 
         if norm(evaluate(∇Q, variables=>cursol)) <= 1e-5
             isNoMin += 1;
             push!(solutionarray, cursol)
-            cursol = cursol - 1e-1*rand(Float64, length(cursol))
+            cursol = cursol - 5e-2*rand(Float64, length(cursol))
             cursol = cursol - floor.(cursol)
         end
 
         prevsol = cursol
-        push!(solutionarray, cursol)
+        iter%5==0 && push!(solutionarray, cursol)
     end
     cursol = solutionarray[argmin([evaluate(Q, variables=>sol) for sol in solutionarray])]
     #Round only in the end to grid
@@ -149,6 +150,6 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
     display(scene2)
 end
 
-generateGridLayers(50, 4, 4, 6)
+generateGridLayers(50, 4, 4, 5)
 
 end

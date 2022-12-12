@@ -58,7 +58,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     prevsol = cursol
     solutionarray = []
 
-    for iter in 1:5100
+    for iter in 1:1100
         println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
         cursol = prevsol - α*stepdirection
@@ -81,7 +81,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
         end
 
         prevsol = cursol
-        push!(solutionarray, cursol)
+        iter%5==0 && push!(solutionarray, cursol)
     end
     cursol = solutionarray[argmin([evaluate(Q, variables=>sol) for sol in solutionarray])]
     #Round only in the end to grid
