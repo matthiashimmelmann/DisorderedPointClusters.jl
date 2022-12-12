@@ -31,19 +31,20 @@ function colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neck
     return(layerColours)
 end
 
-function backtracking_linesearch(energy, gradient, variables, p0, v, stepsize; r = 1e-4)
-    α=Base.copy(stepsize)
+function backtracking_linesearch(energy, gradient, variables, p0, v, α; r = 1e-4)
+    baseEnergy = evaluate(energy, variables=>p0)
+    baseGradient = evaluate(gradient, variables=>p0)
     q=Base.copy(p0)
 
     while true
         q = p0+α*v
         # Proceed until the Wolfe condition is satisfied or the stepsize becomes too small. First we quickly find a lower bound, then we gradually increase this lower-bound
-		if evaluate(energy, variables=>p0) - evaluate(energy, variables=>q) >= r*α*Base.abs(v'*evaluate(gradient, variables=>q)) && evaluate(gradient, variables=>q)'*evaluate(gradient, variables=>p0) >= 0
+		if baseEnergy - evaluate(energy, variables=>q) >= r*α*Base.abs(baseGradient'*evaluate(gradient, variables=>q)) && evaluate(gradient, variables=>q)'*baseGradient >= 0
 			return q, α
 		elseif α<1e-2   
 	    	return q, α
         else
-            α=0.5*α
+            α=0.65*α
         end
     end
 end
@@ -71,7 +72,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     end
     ∇Q = differentiate(Q, variables)
     HessQ = differentiate(∇Q, variables)
-    α0 = 0.5;
+    α0 = 0.75;
     isNoMin = 0
     solutionarray = []
 
@@ -80,10 +81,10 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
         println(iter, " ", isNoMin," ", α0, " ", norm(evaluate(∇Q, variables=>cursol)))
         stepdirection = stepdirection ./ norm(stepdirection)
         cursol, newstep = backtracking_linesearch(Q, ∇Q, variables, cursol, -stepdirection, α0; r = 1e-3)
-        α0 = min(5*newstep,0.5)
+        α0 = min(7*newstep,0.75)
         cursol = iter%390 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
-        cursol = iter%70 == 0 ? cursol - 5e-2*rand(Float64, length(cursol)) : cursol
-        α0 = iter%160==0 ? 0.3 : α0
+        cursol = iter%170 == 0 ? cursol - 5e-2*rand(Float64, length(cursol)) : cursol
+        α0 = iter%110==0 ? 0.3 : α0
         cursol = cursol - floor.(cursol)
 
         if norm(evaluate(∇Q, variables=>cursol)) <= 1e-5
@@ -170,6 +171,6 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
     display(scene2)
 end
 
-generateGridLayers(50, 5, 4, 4)
+generateGridLayers(50, 5, 6, 4)
 
 end
