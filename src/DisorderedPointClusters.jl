@@ -17,7 +17,6 @@ end
 
 function color_Neck_Positions(neckConfig, xvarz, xs, totalGrid, layerColours, neckSize; MD_Method)
     xs_eval = MD_Method=="2D-3" ? Array{Float64,3}(undef, size(layerColours)[1], Int(size(xs)[2]/3), 3) : Array{Float64,3}(undef, size(layerColours)[1], size(xs)[2], 3)
-    display(xs)
     xs_eval[:,:,1:2] = MD_Method=="2D-3" ? evaluate.(xs, xvarz=>neckConfig)[:,1:Int(size(xs)[2]/3),1:2] : evaluate.(xs[:,:,1:2], xvarz=>neckConfig)
     for layer in 1:size(layerColours)[1]
         xs_eval[layer,:,3] .= (layer)/size(layerColours)[1]
@@ -70,7 +69,7 @@ function create_Periods(NLayers, NNecks; MD_Method)
     return xs, periodic_xs
 end
 
-function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy, MD_Method, maxIter = 500)
+function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy, MD_Method, maxIter)
     #TODO take several random start points and do 1100 steps or so?
     cursol = Base.copy(initialPoint)
 
@@ -90,27 +89,27 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy, MD
     solutionarray = []
 
     for iter in 1:maxIter
-        println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)), " ", evaluate(Q, variables=>cursol))
+        println(iter, "\tMinima found: ", isNoMin,"\t stepsize: ", round(α, digits=3), "\t\t gradient norm: ", round(norm(evaluate(∇Q, variables=>cursol)), digits=2), "\t\t energy: ", round(evaluate(Q, variables=>cursol), digits=2))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
         cursol = prevsol - α*stepdirection
         α = iter%80 == 0 ? 0.5 : α
         cursol = iter%530 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
+        cursol = iter%190 == 0 ? cursol + 1e-2*(rand(Float64, length(cursol)) .- 0.5) : cursol
+
         cursol = cursol - floor.(cursol)
 
         if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
             α = α/3
         else
             α = 1.1*α
-            α>0.5 ? α = 0.5 : nothing
+            α>0.7 ? α = 0.7 : nothing
         end
-        #cursol = cursol + 1e-8*(rand(Float64, length(cursol)) .- 0.5)
-        cursol = cursol - floor.(cursol)
 
 
         if norm(evaluate(∇Q, variables=>cursol)) <= 1e-2
             isNoMin += 1;
             push!(solutionarray, cursol)
-            cursol = cursol - 5e-1*(rand(Float64, length(cursol)) .- 0.5)
+            cursol = cursol - 2e-1*(rand(Float64, length(cursol)) .- 0.5)
             cursol = cursol - floor.(cursol)
         end
 
@@ -132,8 +131,9 @@ The input is composed of the number of grid points in each layer, "NGrid",
 the number of Necks in each layer, "NNecks", the number of layers, "NLayers",
 and the size of the catenoidal necks in the output, "NeckSize".
 WARNING don't choose NeckSize too large to avoid overlap.
+The maxIter parameter denotes how many MD-steps are supposed to be performed.
 =#
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; energy = "lennardjones", MD_Method = "2D-3")
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; energy = "lennardjones", MD_Method = "2D-3", maxIter = 2100)
     NLayers%2==0 || throw(error("There must be an even number of layers!"))
     MD_Method=="2D-3" || MD_Method=="2D" || MD_Method=="3D" || throw(error("Please choose a permissible MD Method!"))
     energy == "riesz" || energy == "lennardjones" || throw(error("Please choose a permissible potential!"))
@@ -154,7 +154,7 @@ function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int
     end
 
     xs, periodic_xs = create_Periods(NLayers, NNecks; MD_Method = MD_Method)
-    neckConfig = gradientDescent(periodic_xs, initialPoint, xvarz, NGrid; energy = energy, MD_Method = MD_Method)
+    neckConfig = gradientDescent(periodic_xs, initialPoint, xvarz, NGrid; energy = energy, MD_Method = MD_Method, maxIter = maxIter)
 
     totalGrid = Array{Any,4}(undef, NLayers, NGrid, NGrid, 3)
     layerColours = Array{Any,3}(undef, NLayers, NGrid, NGrid)
