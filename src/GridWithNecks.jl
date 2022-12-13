@@ -48,7 +48,7 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     if energy == "riesz"
         Q = sum([1/d^2 for d in distances])
     elseif energy == "lennardjones"
-        σ1 = sqrt(1.5)/(sqrt(size(periodic_xs)[2]/9))
+        σ1 = sqrt(2)/(sqrt(size(periodic_xs)[2]/9))
         Q = sum(((σ1/d)^6-(σ1/d)^3 for d in distances))
     end
     ∇Q = differentiate(Q, variables)
@@ -58,26 +58,27 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     prevsol = cursol
     solutionarray = []
 
-    for iter in 1:5700
+    for iter in 1:2100
         println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)), " ", evaluate(Q, variables=>cursol))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
         cursol = prevsol - α*stepdirection
+        cursol = cursol - floor.(cursol)
         α = iter%80 == 0 ? 0.5 : α
         cursol = iter%530 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
-        cursol = iter%170 == 0 ? cursol - 1e-1*rand(Float64, length(cursol)) : cursol
-        cursol = cursol - floor.(cursol)
         if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
             α = α/3
-            cursol = prevsol
         else
-            α = 1.08*α
-            α>1.0 ? α = 1. : nothing
+            α = 1.1*α
+            α>0.5 ? α = 0.5 : nothing
         end
+        cursol = cursol + 1e-3*(rand(Float64, length(cursol)) .- 0.5)
+        cursol = cursol - floor.(cursol)
+
 
         if norm(evaluate(∇Q, variables=>cursol)) <= 1e-2
             isNoMin += 1;
             push!(solutionarray, cursol)
-            cursol = cursol - 1e-1*rand(Float64, length(cursol))
+            cursol = cursol - 1e-1*(rand(Float64, length(cursol)) .- 0.5)
             cursol = cursol - floor.(cursol)
         end
 
