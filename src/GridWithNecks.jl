@@ -31,24 +31,6 @@ function colorNeckPositions(neckConfig, xvarz, xs, totalGrid, layerColours, neck
     return(layerColours)
 end
 
-function backtracking_linesearch(energy, gradient, variables, p0, v, α; r = 1e-4)
-    baseEnergy = evaluate(energy, variables=>p0)
-    baseGradient = evaluate(gradient, variables=>p0)
-    q=Base.copy(p0)
-
-    while true
-        q = p0+α*v
-        # Proceed until the Wolfe condition is satisfied or the stepsize becomes too small. First we quickly find a lower bound, then we gradually increase this lower-bound
-		if baseEnergy - evaluate(energy, variables=>q) >= r*α*Base.abs(baseGradient'*evaluate(gradient, variables=>q)) && evaluate(gradient, variables=>q)'*baseGradient >= 0
-			return q, α
-		elseif α<1e-2   
-	    	return q, α
-        else
-            α=0.65*α
-        end
-    end
-end
-
 function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     #TODO take several random start points and do 1100 steps or so?
     cursol = Base.copy(initialPoint)
@@ -66,31 +48,36 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     if energy == "riesz"
         Q = sum([1/d^2 for d in distances])
     elseif energy == "lennardjones"
-        σ1 = sqrt(2)/(sqrt(size(periodic_xs)[2]/9))
-        display(σ1)
+        σ1 = sqrt(1.5)/(sqrt(size(periodic_xs)[2]/9))
         Q = sum(((σ1/d)^6-(σ1/d)^3 for d in distances))
     end
     ∇Q = differentiate(Q, variables)
     HessQ = differentiate(∇Q, variables)
-    α0 = 0.75;
     isNoMin = 0
+    α = 0.5
+    prevsol = cursol
     solutionarray = []
 
-    for iter in 1:2100
+    for iter in 1:5700
+        println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)), " ", evaluate(Q, variables=>cursol))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
-        println(iter, " ", isNoMin," ", α0, " ", norm(evaluate(∇Q, variables=>cursol)))
-        stepdirection = stepdirection ./ norm(stepdirection)
-        cursol, newstep = backtracking_linesearch(Q, ∇Q, variables, cursol, -stepdirection, α0; r = 1e-3)
-        α0 = min(7*newstep,0.75)
-        cursol = iter%390 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
-        cursol = iter%170 == 0 ? cursol - 5e-2*rand(Float64, length(cursol)) : cursol
-        α0 = iter%110==0 ? 0.3 : α0
+        cursol = prevsol - α*stepdirection
+        α = iter%80 == 0 ? 0.5 : α
+        cursol = iter%530 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
+        cursol = iter%170 == 0 ? cursol - 1e-1*rand(Float64, length(cursol)) : cursol
         cursol = cursol - floor.(cursol)
+        if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
+            α = α/3
+            cursol = prevsol
+        else
+            α = 1.08*α
+            α>1.0 ? α = 1. : nothing
+        end
 
-        if norm(evaluate(∇Q, variables=>cursol)) <= 1e-5
+        if norm(evaluate(∇Q, variables=>cursol)) <= 1e-2
             isNoMin += 1;
             push!(solutionarray, cursol)
-            cursol = cursol - 5e-2*rand(Float64, length(cursol))
+            cursol = cursol - 1e-1*rand(Float64, length(cursol))
             cursol = cursol - floor.(cursol)
         end
 
@@ -171,6 +158,6 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
     display(scene2)
 end
 
-generateGridLayers(50, 5, 6, 4)
+generateGridLayers(65, 6, 4, 5)
 
 end
