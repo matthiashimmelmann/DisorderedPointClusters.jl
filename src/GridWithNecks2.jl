@@ -58,20 +58,22 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     prevsol = cursol
     solutionarray = []
 
-    for iter in 1:1100
+    for iter in 1:2100
         println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
         cursol = prevsol - α*stepdirection
         α = iter%80 == 0 ? 0.5 : α
         cursol = iter%530 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
-        cursol = iter%310 == 0 ? cursol - 1e-1*rand(Float64, length(cursol)) : cursol
         cursol = cursol - floor.(cursol)
+
         if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
             α = α/3
         else
             α = 1.1*α
             α>0.5 ? α = 0.5 : nothing
         end
+        cursol = cursol + 1e-3*(rand(Float64, length(cursol)) .- 0.5)
+        cursol = cursol - floor.(cursol)
 
         if norm(evaluate(∇Q, variables=>cursol)) <= 1e-5
             isNoMin += 1;

@@ -60,25 +60,27 @@ function gradientDescent(periodic_xs, initialPoint, variables, NGrid; energy)
     solutionarray = []
 
     for iter in 1:2100
-        println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)))
+        println(iter, " ", isNoMin," ", α, " ", norm(evaluate(∇Q, variables=>cursol)), " ", evaluate(Q, variables=>cursol))
         stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
         stepdirection = stepdirection ./ norm(stepdirection)
         cursol = prevsol - α*stepdirection
         α = iter%80 == 0 ? 0.5 : α
         cursol = iter%380 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
-        cursol = iter%140 == 0 ? cursol - 5e-2*rand(Float64, length(cursol)) : cursol
         cursol = cursol - floor.(cursol)
+
         if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
             α = α/3
         else
             α = 1.1*α
-            α>1. ? α = 1. : nothing
+            α>0.5 ? α = 0.5 : nothing
         end
+        cursol = cursol + 1e-3*(rand(Float64, length(cursol)) .- 0.5)
+        cursol = cursol - floor.(cursol)
 
-        if norm(evaluate(∇Q, variables=>cursol)) <= 1e-5
+        if norm(evaluate(∇Q, variables=>cursol)) <= 1e-3
             isNoMin += 1;
             push!(solutionarray, cursol)
-            cursol = cursol - 5e-2*rand(Float64, length(cursol))
+            cursol = cursol + 5e-2*rand(Float64, length(cursol))
             cursol = cursol - floor.(cursol)
         end
 
@@ -150,6 +152,6 @@ function generateGridLayers(NGrid, NNecks, NLayers, neckSize)
     display(scene2)
 end
 
-generateGridLayers(50, 4, 4, 5)
+generateGridLayers(65, 6, 4, 5)
 
 end
