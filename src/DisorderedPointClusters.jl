@@ -5,7 +5,6 @@ import GLMakie: scatter!, Axis3, Figure, Point3f0, Scene, cam3d!
 import LinearAlgebra: norm, det, pinv, svd
 import HomotopyContinuation: Variable, Expression, evaluate, differentiate
 import Combinatorics: multiexponents
-#import Zygote: gradient
 
 export generateGridLayers
 
@@ -86,9 +85,10 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
     prevsol = Base.copy(initialPoint)
     saveEnergy = energyfunction(prevsol)
     for iter in 1:maxIter
+      #TODO do BFS around point to see if local min
       cursol = takeMonteCarloStep(prevsol, NGrid, NGrid2)
       energy = energyfunction(cursol)
-      iter%100==0 && println(iter," ", energy)
+      iter%50==0 && println(iter," ", energy)
       if energy < saveEnergy
         outputList[end] = cursol
         saveEnergy = energy
@@ -166,7 +166,7 @@ and the size of the catenoidal necks in the output, "NeckSize".
 WARNING don't choose NeckSize too large to avoid overlap.
 The maxIter parameter denotes how many MD-steps are supposed to be performed.
 =#
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 25000, monteCarloStartPoints = 7)
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 5000, monteCarloStartPoints = 5)
     NLayers%2==0 || throw(error("There must be an even number of layers!"))
     MD_Method=="2D-3" || MD_Method=="2D" || MD_Method=="3D" || throw(error("Please choose a permissible MD Method!"))
     (MD_Method!="2D-3" || NLayers>=4) || throw(error("When using the method 2D-3 you need to use at least 4 layers!"))
