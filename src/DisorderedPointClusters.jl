@@ -1,19 +1,26 @@
 module DisorderedPointClusters
-#Interactions are taken per 3 consecutive 2D-layers
 
-import GLMakie: scatter!, Axis3, Figure, Point3f0, Scene, cam3d!
+import GLMakie: scatter!, Axis3, Figure, Point3f0, Point2f0, Scene, cam3d!
 import LinearAlgebra: norm, det, pinv, svd
 import HomotopyContinuation: Variable, Expression, evaluate, differentiate
 import Combinatorics: multiexponents
 
 export generateGridLayers
 
+#=
+Creates a square of size `NeckSize` based on the Manhattan-distance around the center point `neckCenter`
+in the grid defined by `NGrid` and `NGrid2`.
+=#
 function createStar(neckCenter, neckSize, NGrid, NGrid2)
     directions = collect(Set(vcat([[[part[1],part[2]], [-part[1],part[2]], [part[1],-part[2]], [-part[1],-part[2]]] for part in vcat([collect(multiexponents(2, exp)) for exp in 0:neckSize]...)]...)))
     star = [[mod(((dir .+ neckCenter)[1]-1),NGrid)+1, mod(((dir .+ neckCenter)[2]-1),NGrid2)+1] for dir in directions]
     return star
 end
 
+#=
+In the arrray `layerColors` the calculated positions `neckConfig` of the catenoidal necks are coloured
+according to their size `neckSize`. 
+=#
 function color_Neck_Positions(neckConfig, xvarz, xs, totalGrid, layerColours, neckSize; MD_Method)
     xs_eval = MD_Method=="2D-3" ? Array{Float64,3}(undef, size(layerColours)[1], Int(size(xs)[2]/3), 3) : Array{Float64,3}(undef, size(layerColours)[1], size(xs)[2], 3)
     xs_eval[:,:,1:2] = MD_Method=="2D-3" ? evaluate.(xs, xvarz=>neckConfig)[:,1:Int(size(xs)[2]/3),1:2] : evaluate.(xs[:,:,1:2], xvarz=>neckConfig)
@@ -30,7 +37,13 @@ function color_Neck_Positions(neckConfig, xvarz, xs, totalGrid, layerColours, ne
     return(layerColours)
 end
 
-function create_list_of_relevant_distances(xs, NGrid, NGrid2; MD_Method)
+#=
+`createListOfRelevantDistances` generates a vector of lists of torus distances, 
+i.e. for two molecules all 9 possible distance pairs, in the 2-torus,
+for all molecules that match what `MD_Method` dictates. 
+No duplicates are calculated because of the if-statements.
+=#
+function createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method)
   list_of_relevant_molecule_interactions = []
   for layer1 in 1:size(xs)[1], layer2 in layer1:size(xs)[1], pos_torus1 in 1:size(xs)[2], pos_torus2 in 1:size(xs)[2]
       if MD_Method == "2D-3" && pos_torus1<pos_torus2 && all(t->(layer1!=t[1]||pos_torus1!=t[4]||t[3]!=pos_torus2) && (layer1!=t[1]||pos_torus1!=t[3]||t[4]!=pos_torus2), list_of_relevant_molecule_interactions)
@@ -44,7 +57,24 @@ function create_list_of_relevant_distances(xs, NGrid, NGrid2; MD_Method)
   return [[sum((period + xs[layer1,pos1,:] - xs[layer2,pos2,:]).^2) for period in multiPeriods] for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
 end
 
-function create_Periods(NLayers, NNecks; MD_Method)
+#=
+Does what the method's name suggests: Calculate an approximation of the `energyFunction`'s gradient at `point`.
+=#
+function calculateGradient(energyFunction, point; t = 1e-5)
+    gradient = []
+    time1=Base.time()
+    for i in 1:length(point)
+        push!(gradient, (energyFunction(point+[i==j ? t : 0 for j in 1:length(point)])-energyFunction(point))/t)
+    end
+    display(Base.time()-time1)
+    return gradient ./ norm(gradient)
+end
+
+#=
+The method `createNeckMatrix` generates a matrix of `NNecks` necks for each of the `NLayers` layers.
+Depending on the parameter MD_Method, the looks of the matrix may differ.
+=#
+function createNeckMatrix(NLayers, NNecks; MD_Method)
     xs = MD_Method == "2D-3" ? Array{Expression,3}(undef, NLayers, NNecks*3, 2) : 
            Array{Expression,3}(undef, NLayers, NNecks, MD_Method == "2D" ? 2 : 3)
 
@@ -57,37 +87,41 @@ function create_Periods(NLayers, NNecks; MD_Method)
           xs[layer,:,3] .= layer/NLayers
         end
     end
-    #=
-    periodic_xs = MD_Method == "3D" ? Array{Expression,3}(undef, NLayers, size(xs)[2]*9, 3) : Array{Expression,3}(undef, NLayers, size(xs)[2]*9, 2)
-    #NOTE left to right 1-2-3, bottom to top 1-4-7
-    for torus in 1:9
-        periodic_xs[:, (torus-1)*size(xs)[2]+1:torus*size(xs)[2], :] = xs
-        periodic_xs[:, (torus-1)*size(xs)[2]+1:torus*size(xs)[2], 1] .+= (torus-1)%3-1
-        periodic_xs[:, (torus-1)*size(xs)[2]+1:torus*size(xs)[2], 2] .+= Int(floor((torus-1)/3))-1
-    end
-    =#
 
-    return xs#, periodic_xs
+    return xs
 end
 
+#=
+The method takeMonteCarloStep calculates one random step on the grid 
+in direction 0/1/-1 for each entry of the solution vector.
+=#
 function takeMonteCarloStep(sol, NGrid, NGrid2)
-  sol = sol + [rand([-1,0,1])/NGrid for _ in sol]
-  scaling = [i%2==1 ? 1 : NGrid2/NGrid for i in 1:length(sol)]
-  return sol - scaling .* floor.(sol ./ scaling)
+    sol = sol + [rand([-1,0,1])/NGrid for _ in sol]
+    scaling = [i%2==1 ? 1 : NGrid2/NGrid for i in 1:length(sol)]
+    return sol - scaling .* floor.(sol ./ scaling)
 end
 
+#=
+`monteCarlo` is the framework for a Monte Carlo Optimization.
+It takes the neck point matrix `xs`, the array of initial guesses `initialPoints`,
+the list of variables `xvarz` and the rectangular grid sizes `NGrid` and `NGrid2`
+as input. It outputs the least energy configuration that was found along random walks
+from the starting positions.
+=#
 function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
-  distanceList = create_list_of_relevant_distances(xs, NGrid, NGrid2; MD_Method = MD_Method)
-  energyfunction = sol->sum(1 ./ (map(t->minimum(evaluate(t, xvarz=>sol)), distanceList).^2))
+  distanceList = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method)
+  energyFunction = sol->sum(1 ./ (map(t->minimum(evaluate(t, xvarz=>sol)), distanceList).^2))
   outputList = []
   for initialPoint in initialPoints
     push!(outputList, initialPoint)
     prevsol = Base.copy(initialPoint)
-    saveEnergy = energyfunction(prevsol)
+    saveEnergy = energyFunction(prevsol)
+    display(calculateGradient(energyFunction, prevsol))
     for iter in 1:maxIter
-      #TODO do BFS around point to see if local min
+      #TODO consecutive BFS around each point
+      #TODO calculate gradients and take a step in that direction
       cursol = takeMonteCarloStep(prevsol, NGrid, NGrid2)
-      energy = energyfunction(cursol)
+      energy = energyFunction(cursol)
       iter%50==0 && println(iter," ", energy)
       if energy < saveEnergy
         outputList[end] = cursol
@@ -97,65 +131,8 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
     end
   end
 
-  return argmin(sol->energyfunction(sol), outputList)
+  return argmin(sol->energyFunction(sol), outputList)
 end
-
-
-#=
-function gradientDescent(xs, initialPoint, variables, NGrid; energy, MD_Method, maxIter)
-    cursol = Base.copy(initialPoint)
-
-    distances = create_list_of_relevant_distances(xs; MD_Method = MD_Method)
-    Q=0;
-    if energy == "riesz"
-        Q = sum([1/d^2 for d in distances])
-    elseif energy == "lennardjones"
-        σ1 = MD_Method=="2D" ? sqrt(2)/(sqrt(size(xs)[1]*size(xs)[2]/9)) : sqrt(2)/(sqrt(size(xs)[2]/9))
-        Q = sum(((σ1/d)^6-(σ1/d)^3 for d in distances))
-    end
-    ∇Q = differentiate(Q, variables)
-    HessQ = differentiate(∇Q, variables)
-    isNoMin = 0
-    α = 0.5
-    prevsol = cursol
-    solutionarray = []
-
-    for iter in 1:maxIter
-        println(iter, "\tMinima found: ", isNoMin,"\t stepsize: ", round(α, digits=3), "\t\t gradient norm: ", round(norm(evaluate(∇Q, variables=>cursol)), digits=1), "\t\t energy: ", round(evaluate(Q, variables=>cursol), digits=1))
-        stepdirection = pinv(evaluate.(HessQ, variables=>cursol))*evaluate(∇Q, variables=>cursol)
-        cursol = prevsol - α*stepdirection
-        α = iter%80 == 0 ? 0.5 : α
-        cursol = iter%530 == 0 ? mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid) : cursol
-        cursol = iter%190 == 0 ? cursol + 1e-2*(rand(Float64, length(cursol)) .- 0.5) : cursol
-
-        cursol = cursol - floor.(cursol)
-
-        if norm(evaluate(∇Q, variables => cursol)) > norm(evaluate(∇Q, variables => prevsol))
-            α = α/3
-        else
-            α = 1.1*α
-            α>0.7 ? α = 0.7 : nothing
-        end
-
-
-        if norm(evaluate(∇Q, variables=>cursol)) <= 1e-2
-            isNoMin += 1;
-            push!(solutionarray, cursol)
-            cursol = cursol - 2e-1*(rand(Float64, length(cursol)) .- 0.5)
-            cursol = cursol - floor.(cursol)
-        end
-
-        prevsol = cursol
-        iter%5==0 && push!(solutionarray, cursol)
-    end
-    cursol = solutionarray[argmin([evaluate(Q, variables=>sol) for sol in solutionarray])]
-    #Round only in the end to grid
-    cursol = mod.(Int.(round.(NGrid.*cursol)), NGrid) ./ NGrid .+ 1/(2*NGrid)
-    cursol = cursol - floor.(cursol)
-
-    return cursol
-end
-=#
 
 #=
 There are three ways to generate point clouds: "2D-3", "2D" and "3D". 
@@ -166,10 +143,11 @@ and the size of the catenoidal necks in the output, "NeckSize".
 WARNING don't choose NeckSize too large to avoid overlap.
 The maxIter parameter denotes how many MD-steps are supposed to be performed.
 =#
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 5000, monteCarloStartPoints = 5)
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 25000, monteCarloStartPoints = 5)
     NLayers%2==0 || throw(error("There must be an even number of layers!"))
     MD_Method=="2D-3" || MD_Method=="2D" || MD_Method=="3D" || throw(error("Please choose a permissible MD Method!"))
     (MD_Method!="2D-3" || NLayers>=4) || throw(error("When using the method 2D-3 you need to use at least 4 layers!"))
+    NGrid2 >= NGrid || throw(error("For some reason, NGrid2 needs to be at least as large as `NGrid`. Please abide by the rules of the code god."))
 
     pointGrid = [[Point3f0(a,b,c) for a in 1/(NGrid*2):1/NGrid:1-1/(NGrid*2) for b in 1/(NGrid*2):1/NGrid:NGrid2/NGrid-1/(NGrid*2)]  for c in 0:1/NLayers:1-1/NLayers]
     xvarz = [Variable(:x, layer, neck, pos) for layer in 1:NLayers for neck in 1:NNecks for pos in 1:2]
@@ -187,8 +165,7 @@ function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int
       push!(initialPoints, initialPoint)
     end
 
-    xs#=, periodic_xs=# = create_Periods(NLayers, NNecks; MD_Method = MD_Method)
-    #neckConfig = gradientDescent(periodic_xs, initialPoint, xvarz, NGrid; energy = energy, MD_Method = MD_Method, maxIter = maxIter)
+    xs = createNeckMatrix(NLayers, NNecks; MD_Method = MD_Method)
     neckConfig = monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method = MD_Method, maxIter = maxIter)
 
     totalGrid = Array{Any,4}(undef, NLayers, NGrid, NGrid2, 3)
@@ -197,17 +174,22 @@ function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int
         totalGrid[layer, pos1+1, pos2+1,:] = [1/(NGrid*2)+pos1/NGrid, 1/(NGrid*2)+pos2/NGrid, layer/NLayers]
         layerColours[layer, pos1+1, pos2+1] = mod(layer, 2)
     end
-
-    scene2 = Scene()
-    cam3d!(scene2)
     layerColours = color_Neck_Positions(neckConfig, xvarz, xs, totalGrid, layerColours, NeckSize; MD_Method = MD_Method)
     open("pomelocoordinates.txt", "w") do io
         for k in [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:NLayers]
             write(io, string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "1" : "2", "\n"))
         end
     end;
-    foreach(k -> scatter!(scene2, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue), [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:NLayers ])
-    display(scene2)
+    
+    scene = Scene()
+    if MD_Method == "2D"
+        xs_eval = evaluate.(xs, xvarz=>neckConfig)
+        foreach(k -> scatter!(scene, Point2f0(xs_eval[k[1],k[2],1:2]), color = mod(k[1],2)==0 ? :red : :blue), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:size(xs_eval)[2]])
+    else
+        cam3d!(scene)
+        foreach(k -> scatter!(scene, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue), [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:NLayers ])
+    end
+    display(scene)
 end
 
 end
