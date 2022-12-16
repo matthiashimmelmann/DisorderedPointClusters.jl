@@ -66,9 +66,9 @@ function calculateGradient(energyFunction, point; t = 1e-5)
     for i in 1:length(point)
         push!(gradient, (energyFunction(point+[i==j ? t : 0 for j in 1:length(point)])-energyFunction(point))/t)
     end
-    display(Base.time()-time1)
-    return gradient ./ norm(gradient)
+    return gradient
 end
+
 
 #=
 The method `createNeckMatrix` generates a matrix of `NNecks` necks for each of the `NLayers` layers.
@@ -110,24 +110,41 @@ from the starting positions.
 =#
 function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
   distanceList = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method)
-  energyFunction = sol->sum(1 ./ (map(t->minimum(evaluate(t, xvarz=>sol)), distanceList).^2))
+  energyFunction = sol->sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList))
   outputList = []
   for initialPoint in initialPoints
     push!(outputList, initialPoint)
     prevsol = Base.copy(initialPoint)
     saveEnergy = energyFunction(prevsol)
-    display(calculateGradient(energyFunction, prevsol))
     for iter in 1:maxIter
-      #TODO consecutive BFS around each point
-      #TODO calculate gradients and take a step in that direction
-      cursol = takeMonteCarloStep(prevsol, NGrid, NGrid2)
-      energy = energyFunction(cursol)
-      iter%50==0 && println(iter," ", energy)
-      if energy < saveEnergy
-        outputList[end] = cursol
-        saveEnergy = energy
-        prevsol = cursol
-      end
+        #TODO consecutive BFS around each point
+        #TODO calculate gradients and take a step in that direction
+        cursol = takeMonteCarloStep(prevsol, NGrid, NGrid2)
+        energy = energyFunction(cursol)
+        iter%50==0 && println(iter," ", energy)
+        if energy < saveEnergy
+            outputList[end] = cursol
+            saveEnergy = energy
+            prevsol = cursol
+        end
+
+        #=
+        if iter%250==0
+            gradient = calculateGradient(energyFunction, prevsol)
+            avg = sum([norm(grd) for grd in gradient]) / length(gradient)
+            gradient = round.(NGrid .* round.(gradient))
+            gradient = [grd > avg ? 1 : (grd < -avg ? -1 : 0) for grd in gradient] ./ NGrid
+            scaling = [i%2==1 ? 1 : NGrid2/NGrid for i in 1:length(prevsol)]
+            cursol = prevsol - gradient
+            cursol = cursol - scaling .* floor.(cursol ./ scaling)
+            if energyFunction(cursol) < saveEnergy
+                println("HMC improved!")
+                outputList[end] = cursol
+                saveEnergy = energyFunction(cursol)
+                prevsol = cursol
+            end
+        end
+        =#
     end
   end
 
