@@ -62,7 +62,6 @@ Does what the method's name suggests: Calculate an approximation of the `energyF
 =#
 function calculateGradient(energyFunction, point; t = 1e-5)
     gradient = []
-    time1=Base.time()
     for i in 1:length(point)
         push!(gradient, (energyFunction(point+[i==j ? t : 0 for j in 1:length(point)])-energyFunction(point))/t)
     end
@@ -124,8 +123,7 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
             prevsol = cursol
         end
 
-        #=
-        if iter%250==0
+        if iter%1000==0
             gradient = calculateGradient(energyFunction, prevsol)
             avg = sum([norm(grd) for grd in gradient]) / length(gradient)
             gradient = round.(NGrid .* round.(gradient))
@@ -140,7 +138,6 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
                 prevsol = cursol
             end
         end
-        =#
     end
   end
 
@@ -156,7 +153,7 @@ and the size of the catenoidal necks in the output, "NeckSize".
 WARNING don't choose NeckSize too large to avoid overlap.
 The maxIter parameter denotes how many MD-steps are supposed to be performed.
 =#
-function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 15000, monteCarloStartPoints = 1)
+function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 25000, monteCarloStartPoints = 5)
     length(NeckArray)%2==0 || throw(error("There must be an even number of layers!"))
     MD_Method=="2D-3" || MD_Method=="2D" || MD_Method=="3D" || throw(error("Please choose a permissible MD Method!"))
     (MD_Method!="2D-3" || length(NeckArray)>=4) || throw(error("When using the method 2D-3 you need to use at least 4 layers!"))
