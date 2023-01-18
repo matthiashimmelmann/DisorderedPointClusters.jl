@@ -123,7 +123,7 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
             prevsol = cursol
         end
 
-        if iter%1000==0
+        if iter%250==0
             gradient = calculateGradient(energyFunction, prevsol)
             avg = sum([norm(grd) for grd in gradient]) / length(gradient)
             gradient = round.(NGrid .* round.(gradient))
@@ -203,8 +203,10 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
     display(scene)
 end
 
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 15000, monteCarloStartPoints = 1)
-    generateGridLayers(NGrid, [NNecks for _ in 1:NLayerss], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 25000, monteCarloStartPoints = 3)
+    generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
+
+generateGridLayers(50, 1, 4, 7)
 
 end
