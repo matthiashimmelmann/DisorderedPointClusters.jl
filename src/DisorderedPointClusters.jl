@@ -22,7 +22,7 @@ end
 In the arrray `layerColors` the calculated positions `neckConfig` of the catenoidal necks are coloured
 according to their size `neckSize`. 
 =#
-function color_Neck_Positions(NeckArray, neckConfig, xvarz, xs, totalGrid, layerColours, neckSize; MD_Method)
+function color_Neck_Positions(NeckArray, neckConfig, xvarz, xs, totalGrid, layerColours, neckSize; MD_Method)   
     xs_eval = [[] for _ in 1:size(layerColours)[1]]
     for layer in 1:size(NeckArray)[1]
         xs_eval[layer] = [vcat(evaluate(xs[layer][pos][1:2], xvarz=>neckConfig), (layer)/size(layerColours)[1]) for pos in 1:NeckArray[layer]]
@@ -43,7 +43,7 @@ i.e. for two molecules all 9 possible distance pairs, in the 2-torus,
 for all molecules that match what `MD_Method` dictates. 
 No duplicates are calculated because of the if-statements.
 =#
-function createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method)
+function createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method, distance="euclidean")
     list_of_relevant_molecule_interactions = []
     for layer1 in 1:length(xs), layer2 in layer1:length(xs), pos_torus1 in 1:length(xs[layer1]), pos_torus2 in 1:length(xs[layer2])
         if MD_Method == "2D-3" && layer1==layer2&& pos_torus1<pos_torus2 && all(t->(layer1!=t[1]||pos_torus1!=t[4]||t[3]!=pos_torus2) && (layer1!=t[1]||pos_torus1!=t[3]||t[4]!=pos_torus2), list_of_relevant_molecule_interactions)
@@ -54,7 +54,13 @@ function createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method)
     end
     
     multiPeriods = MD_Method == "3D" ? [[mod(i-1,3)-1, NGrid2/NGrid*(mod(div(i-1,3),3)-1),0] for i in 1:9] : [[mod(i-1,3)-1, NGrid2/NGrid*(mod(div(i-1,3),3)-1)] for i in 1:9]
-    return [[sum((period + xs[layer1][pos1] - xs[layer2][pos2]).^2) for period in multiPeriods] for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
+    if distance=="euclidean"
+        return [[sum((period + xs[layer1][pos1] - xs[layer2][pos2]).^2) for period in multiPeriods] for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
+    elseif distance=="manhattan"
+        return [[(period + xs[layer1][pos1] - xs[layer2][pos2]) for period in multiPeriods] for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
+    else
+        throw(error("Distance type needs to be specified!"))
+    end
   end
 
 #=
@@ -96,6 +102,7 @@ function takeMonteCarloStep(sol, NGrid, NGrid2)
     return sol - scaling .* floor.(sol ./ scaling)
 end
 
+
 #=
 `monteCarlo` is the framework for a Monte Carlo Optimization.
 It takes the neck point matrix `xs`, the array of initial guesses `initialPoints`,
@@ -103,18 +110,18 @@ the list of variables `xvarz` and the rectangular grid sizes `NGrid` and `NGrid2
 as input. It outputs the least energy configuration that was found along random walks
 from the starting positions.
 =#
-function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method, maxIter)
-  distanceList = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method)
-  energyFunction = sol->sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList))
+function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method, maxIter)
+  distanceList = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="euclidean")
+  manhattanDistance = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="manhattan")
+  energyFunction = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+1)/NGrid ? 100 : 0 for t in manhattanDistance)
   outputList = []
   for initialPoint in initialPoints
     push!(outputList, initialPoint)
     prevsol = Base.copy(initialPoint)
     saveEnergy = energyFunction(prevsol)
     for iter in 1:maxIter
-        #TODO consecutive BFS around each point
-        #TODO calculate gradients and take a step in that direction
         cursol = takeMonteCarloStep(prevsol, NGrid, NGrid2)
+
         energy = energyFunction(cursol)
         iter%50==0 && println(iter," ", energy)
         if energy < saveEnergy
@@ -153,7 +160,7 @@ and the size of the catenoidal necks in the output, "NeckSize".
 WARNING don't choose NeckSize too large to avoid overlap.
 The maxIter parameter denotes how many MD-steps are supposed to be performed.
 =#
-function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 25000, monteCarloStartPoints = 5)
+function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 15000, monteCarloStartPoints = 3)
     length(NeckArray)%2==0 || throw(error("There must be an even number of layers!"))
     MD_Method=="2D-3" || MD_Method=="2D" || MD_Method=="3D" || throw(error("Please choose a permissible MD Method!"))
     (MD_Method!="2D-3" || length(NeckArray)>=4) || throw(error("When using the method 2D-3 you need to use at least 4 layers!"))
@@ -175,14 +182,14 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
       end
       push!(initialPoints, initialPoint)
     end
-
+    #TODO points closer than necksize => push apart
     xs = createNeckMatrix(NeckArray; MD_Method = MD_Method)
-    neckConfig = monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2; MD_Method = MD_Method, maxIter = maxIter)
+    neckConfig = monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method = MD_Method, maxIter = maxIter)
 
     totalGrid = Array{Any,4}(undef, length(NeckArray), NGrid, NGrid2, 3)
     layerColours = Array{Any,3}(undef, length(NeckArray), NGrid, NGrid2)
     for layer in 1:length(NeckArray), pos1 in 0:NGrid-1, pos2 in 0:NGrid2-1
-        totalGrid[layer, pos1+1, pos2+1,:] = [1/(NGrid*2)+pos1/NGrid, 1/(NGrid*2)+pos2/NGrid, layer/length(NeckArray)]
+        totalGrid[layer, pos1+1, pos2+1,:] = [1/(NGrid*2)+pos1/NGrid, 1/(NGrid*2)+pos2/NGrid, (layer-1)/length(NeckArray)]
         layerColours[layer, pos1+1, pos2+1] = mod(layer, 2)
     end
     layerColours = color_Neck_Positions(NeckArray, neckConfig, xvarz, xs, totalGrid, layerColours, NeckSize; MD_Method = MD_Method)
@@ -198,15 +205,15 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
         foreach(k -> scatter!(scene, Point2f0(xs_eval[k[1]][k[2]][1:2]), color = mod(k[1],2)==0 ? :red : :blue), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
     else
         cam3d!(scene)
-        foreach(k -> scatter!(scene, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue), [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray) ])
+        foreach(k -> mod(layerColours[k[1],k[2],k[3]],2) != mod(k[1],2) ? scatter!(scene, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue) : nothing, [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)])
     end
     display(scene)
 end
 
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 25000, monteCarloStartPoints = 3)
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 15000, monteCarloStartPoints = 3)
     generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
 
-generateGridLayers(50, 1, 4, 7)
+generateGridLayers(65, 5, 4, 8; MD_Method="2D-3")
 
 end
