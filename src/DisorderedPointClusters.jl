@@ -1,5 +1,5 @@
 module DisorderedPointClusters
-#TODO add possibility for different number of necks per layer
+#TODO Circular Necks instead of squares
 
 import GLMakie: scatter!, Axis3, Figure, Point3f0, Point2f0, Scene, cam3d!
 import LinearAlgebra: norm, det, pinv, svd
@@ -113,7 +113,9 @@ from the starting positions.
 function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method, maxIter)
   distanceList = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="euclidean")
   manhattanDistance = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="manhattan")
-  energyFunction = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+1)/NGrid ? 100 : 0 for t in manhattanDistance)
+  energyFunction = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList))
+  energyFunctionManhattan = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+2)/NGrid ? 100 : 0 for t in manhattanDistance)
+
   outputList = []
   for initialPoint in initialPoints
     push!(outputList, initialPoint)
@@ -144,6 +146,19 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
                 saveEnergy = energyFunction(cursol)
                 prevsol = cursol
             end
+        end
+    end
+
+    saveEnergy = energyFunctionManhattan(prevsol)
+    for iter in maxIter+1:maxIter+maxIter/10
+        cursol = takeMonteCarloStep(prevsol, NGrid, NGrid2)
+
+        energy = energyFunctionManhattan(cursol)
+        iter%50==0 && println(iter," ", energy, " (Manhattan distance)")
+        if energy < saveEnergy
+            outputList[end] = cursol
+            saveEnergy = energy
+            prevsol = cursol
         end
     end
   end
@@ -210,10 +225,10 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
     display(scene)
 end
 
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 15000, monteCarloStartPoints = 3)
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 10000, monteCarloStartPoints = 3)
     generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
 
-generateGridLayers(65, 5, 4, 8; MD_Method="2D-3")
+generateGridLayers(65, 2, 4, 7; MD_Method="2D-3")
 
 end
