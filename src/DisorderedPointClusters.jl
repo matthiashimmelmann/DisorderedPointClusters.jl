@@ -46,7 +46,7 @@ No duplicates are calculated because of the if-statements.
 function createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method, distance="euclidean")
     list_of_relevant_molecule_interactions = []
     for layer1 in 1:length(xs), layer2 in layer1:length(xs), pos_torus1 in 1:length(xs[layer1]), pos_torus2 in 1:length(xs[layer2])
-        if MD_Method == "2D-3" && layer1==layer2&& pos_torus1<pos_torus2 && all(t->(layer1!=t[1]||pos_torus1!=t[4]||t[3]!=pos_torus2) && (layer1!=t[1]||pos_torus1!=t[3]||t[4]!=pos_torus2), list_of_relevant_molecule_interactions)
+        if MD_Method == "2D-3" && layer1==layer2 && pos_torus1<pos_torus2 && all(t->(layer1!=t[1]||pos_torus1!=t[4]||t[3]!=pos_torus2) && (layer1!=t[1]||pos_torus1!=t[3]||t[4]!=pos_torus2), list_of_relevant_molecule_interactions)
             push!(list_of_relevant_molecule_interactions, (layer1, layer1, pos_torus1, pos_torus2))
         elseif (MD_Method == "2D" || MD_Method == "3D") && (layer1!=layer2 || pos_torus1<pos_torus2)
             push!(list_of_relevant_molecule_interactions, (layer1, layer2, pos_torus1, pos_torus2))
@@ -114,7 +114,7 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
   distanceList = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="euclidean")
   manhattanDistance = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="manhattan")
   energyFunction = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList))
-  energyFunctionManhattan = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+2)/NGrid ? 100 : 0 for t in manhattanDistance)
+  energyFunctionManhattan = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+2)/NGrid ? 100/minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol))) : 0 for t in manhattanDistance)
 
   outputList = []
   for initialPoint in initialPoints
@@ -161,6 +161,7 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
             prevsol = cursol
         end
     end
+    println("Final Energy: ", saveEnergy)
   end
 
   return argmin(sol->energyFunction(sol), outputList)
@@ -225,10 +226,10 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
     display(scene)
 end
 
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 10000, monteCarloStartPoints = 3)
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 15000, monteCarloStartPoints = 3)
     generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
 
-generateGridLayers(65, 2, 4, 7; MD_Method="2D-3")
+generateGridLayers(65, 7, 4, 4; MD_Method="2D-3")
 
 end
