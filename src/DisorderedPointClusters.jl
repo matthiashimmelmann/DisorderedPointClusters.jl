@@ -1,7 +1,7 @@
 module DisorderedPointClusters
 #TODO Circular Necks instead of squares
 
-import GLMakie: scatter!, Axis3, Figure, Point3f0, Point2f0, Scene, cam3d!
+import GLMakie: scatter!, Axis3, Figure, Point3f0, Point2f0, Figure, cam3d!, Axis, xlims!, ylims!, save
 import LinearAlgebra: norm, det, pinv, svd
 import HomotopyContinuation: Variable, Expression, evaluate, differentiate
 import Combinatorics: multiexponents
@@ -14,6 +14,7 @@ in the grid defined by `NGrid` and `NGrid2`.
 =#
 function createStar(neckCenter, neckSize, NGrid, NGrid2)
     directions = collect(Set(vcat([[[part[1],part[2]], [-part[1],part[2]], [part[1],-part[2]], [-part[1],-part[2]]] for part in vcat([collect(multiexponents(2, exp)) for exp in 0:neckSize]...)]...)))
+    #directions = collect(Set(vcat([[[i,j],[i,-j],[-i,j],[-i,-j]] for i in 0:neckSize for j in 0:neckSize]...)))
     star = [[mod(((dir .+ neckCenter)[1]-1),NGrid)+1, mod(((dir .+ neckCenter)[2]-1),NGrid2)+1] for dir in directions]
     return star
 end
@@ -56,6 +57,8 @@ function createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method, distance="e
     multiPeriods = MD_Method == "3D" ? [[mod(i-1,3)-1, NGrid2/NGrid*(mod(div(i-1,3),3)-1),0] for i in 1:9] : [[mod(i-1,3)-1, NGrid2/NGrid*(mod(div(i-1,3),3)-1)] for i in 1:9]
     if distance=="euclidean"
         return [[sum((period + xs[layer1][pos1] - xs[layer2][pos2]).^2) for period in multiPeriods] for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
+    elseif distance=="sameplane"
+        return [[sum((period + xs[layer1][pos1] - xs[layer2][pos2]).^2) for period in multiPeriods] for (layer1, layer2, pos1, pos2) in filter(t->t[1]==t[2],list_of_relevant_molecule_interactions)]
     elseif distance=="manhattan"
         return [[(period + xs[layer1][pos1] - xs[layer2][pos2]) for period in multiPeriods] for (layer1, layer2, pos1, pos2) in list_of_relevant_molecule_interactions]
     else
@@ -112,9 +115,12 @@ from the starting positions.
 =#
 function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method, maxIter)
   distanceList = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="euclidean")
+  #distancesSameplane = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="sameplane")
   manhattanDistance = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="manhattan")
-  energyFunction = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList))
+  #PrioritizeSamePlane?
+  energyFunction = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList) )  
   energyFunctionManhattan = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+2)/NGrid ? 100/minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol))) : 0 for t in manhattanDistance)
+  #energyFunctionSquare = sol -> energyFunction(sol) + sum(minimum(map(t->maximum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+1)/NGrid ? 100/minimum(map(t->maximum(abs.(t)), evaluate.(t,xvarz=>sol))) : 0 for t in manhattanDistance)
 
   outputList = []
   for initialPoint in initialPoints
@@ -126,13 +132,13 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
 
         energy = energyFunction(cursol)
         iter%50==0 && println(iter," ", energy)
-        if energy < saveEnergy
+        if energy <= saveEnergy
             outputList[end] = cursol
             saveEnergy = energy
             prevsol = cursol
         end
 
-        if iter%250==0
+        if iter%1000==0
             gradient = calculateGradient(energyFunction, prevsol)
             avg = sum([norm(grd) for grd in gradient]) / length(gradient)
             gradient = round.(NGrid .* round.(gradient))
@@ -140,7 +146,7 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
             scaling = [i%2==1 ? 1 : NGrid2/NGrid for i in 1:length(prevsol)]
             cursol = prevsol - gradient
             cursol = cursol - scaling .* floor.(cursol ./ scaling)
-            if energyFunction(cursol) < saveEnergy
+            if energyFunction(cursol) <= saveEnergy
                 println("HMC improved!")
                 outputList[end] = cursol
                 saveEnergy = energyFunction(cursol)
@@ -155,7 +161,7 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
 
         energy = energyFunctionManhattan(cursol)
         iter%50==0 && println(iter," ", energy, " (Manhattan distance)")
-        if energy < saveEnergy
+        if energy <= saveEnergy
             outputList[end] = cursol
             saveEnergy = energy
             prevsol = cursol
@@ -163,7 +169,6 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
     end
     println("Final Energy: ", saveEnergy)
   end
-
   return argmin(sol->energyFunction(sol), outputList)
 end
 
@@ -214,22 +219,51 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
             write(io, string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "1" : "2", "\n"))
         end
     end;
-    
-    scene = Scene()
+    open("pomelocoordinates2.txt", "w") do io
+        for i in 1:length([(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)])
+            k = [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)][i]
+            write(io, "$(i): ", string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "c(1, 0, 0, 1)" : "c(0, 0, 1, 1)", "\n"))
+        end
+    end;
+
+    scene=Figure(resolution = (650, 650), fontsize=22)
     if MD_Method == "2D"
+        ax = Axis(scene[1,1])
+        xlims!(ax, (0,1))
+        ylims!(ax, (0,1))
         xs_eval = [[evaluate(xs[layer][pos], xvarz=>neckConfig) for pos in 1:NeckArray[layer]] for layer in 1:length(NeckArray)]
-        foreach(k -> scatter!(scene, Point2f0(xs_eval[k[1]][k[2]][1:2]), color = mod(k[1],2)==0 ? :red : :blue), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
+        foreach(k -> scatter!(ax, Point2f0(xs_eval[k[1]][k[2]][1:2]), color = mod(k[1],2)==0 ? :red : :blue, grid=true, markersize=17), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
+    elseif MD_Method == "2D-3"
+        scene=Figure(resolution = (1800, 900), fontsize = 25, ticksize=18)
+        colors = repeat([:red, :green, :blue, :purple, :orange, :pink, :saddlebrown, :grey30], 20)
+        xs_eval = [[evaluate(xs[layer][pos], xvarz=>neckConfig) for pos in 1:NeckArray[layer]] for layer in 1:length(NeckArray)]
+        ax = vcat([Axis(scene[div(layer-1,2)+1, mod(layer-1,2)+1], title = "Layer = $(layer)", titlecolor=colors[layer]) for layer in 1:length(NeckArray)], Axis(scene[:,3:4], title = "All Layers together"))
+        for layer in 1:length(NeckArray)
+            layer1 = (layer==1) ? length(NeckArray) : layer-1
+            layer2 = (layer==length(NeckArray)) ? 1 : layer+1
+            xlims!(ax[layer], (0,1))
+            ylims!(ax[layer], (0,1))
+            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer][k][1:2]), color = :black, markersize=17), 1:NeckArray[layer])
+            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer1][k][1:2]), color = :red, markersize=17), 1:NeckArray[layer1])
+            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer2][k][1:2]), color = :green, markersize=17), 1:NeckArray[layer2])
+        end
+        xlims!(ax[end], (0,1))
+        ylims!(ax[end], (0,1))
+        foreach(k -> scatter!(ax[end], Point2f0(xs_eval[k[1]][k[2]][1:2]), color = colors[k[1]], markersize=17), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
     else
-        cam3d!(scene)
-        foreach(k -> mod(layerColours[k[1],k[2],k[3]],2) != mod(k[1],2) ? scatter!(scene, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue) : nothing, [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)])
+        ax = Axis3(scene[1,1])
+        xlims!(ax, (0,1))
+        ylims!(ax, (0,1))
+        foreach(k -> mod(layerColours[k[1],k[2],k[3]],2) != mod(k[1],2) ? scatter!(ax, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue, grid=true) : nothing, [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)])
     end
+    save("MolecularConfiguration$(Base.time()).png", scene)
     display(scene)
 end
 
-function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 15000, monteCarloStartPoints = 3)
+function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int; NGrid2 = NGrid, MD_Method = "2D-3", maxIter = 25000, monteCarloStartPoints = 2)
     generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
 
-generateGridLayers(65, 7, 4, 4; MD_Method="2D-3")
+generateGridLayers(50, 1, 4, 2; MD_Method="2D-3", maxIter = 15000, monteCarloStartPoints = 1)
 
 end
