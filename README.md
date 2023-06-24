@@ -1,6 +1,14 @@
 # DisorderedPointClusters.jl
 
-We consider point configurations in the 3-torus $T^3\subset\mathbb{R}^3$. Placing $2n$ parallel planes in the torus, we separate the torus into $2n$ disjoint regions. On each plane, $p$ points are placed. At these points, we intend to place catenoidal necks to connect alternating regions and in doing so create 2 separate, connected labyrinths, as is the case in 3-periodic bicontinuous minimal surfaces. 
+We consider point configurations in the 3-torus $T^3\subset\mathbb{R}^3$. Placing $2n$ parallel planes in the torus, we separate the torus into $2n$ disjoint regions. On each plane, $m$ points $p$ are placed. At these points, we intend to place catenoidal necks (with different software) to connect alternating regions and in doing so create 2 separate, connected labyrinths, as is the case in 3-periodic bicontinuous minimal surfaces. 
+
+As energy functional, we choose the Riesz energy, which is monotonic and purely dependend on the particles' diestance: $q_{ij} = \frac{1}{\lvert\lvert p_i - p_j \lvert\lvert}$ for $\textit{comparable}$ points $p_i$ and $p_j$. The question then becomes, which points we want to compare. There are three different options:
+
+1. `3D`: The energy functional is considered between all points.
+2. `2D`: All points are projected into the same plane by setting $z=0$. Then, we consider distances between all points in that plane, forgetting about the third dimension.
+3. `2D-3`: Since our ultimate goal is to place catenoidal necks where the points lie, for any point only adjacent layers should play a role in determining the energy functional. To model this, for each point a copy is placed in the layer below and above, shadowing its behavior. Then, interactions occuring between points inside a layer are considered.
+
+In each of these cases, the last step of the optimization procedure is to sufficiently separate the points so the catenoidal necks don't intersect. This is done by a heavy penalization when points are too close in the Manhattan distance.
 
 ## Installation
 
