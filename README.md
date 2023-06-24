@@ -1,6 +1,6 @@
 # DisorderedPointClusters.jl
 
-We consider point configurations in the 3-torus <img src="https://render.githubusercontent.com/render/math?math=T^3\subset\mathbb{R}^3">. 
+We consider point configurations in the 3-torus $T^3\subset\mathbb{R}^3$
 
 ## Installation
 
