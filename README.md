@@ -19,5 +19,5 @@ julia> generateGridLayers(50, 7, 6, 3; MD_Method="2D-3", maxIter = 35000, monteC
 
 This input results in the following image: 
 <p align="center">
-  <img src="https://github.com/matthiashimmelmann/DisorderedPointClusters.jl/blob/main/pictures/MolecularConfiguration1.678112526442e9.png" width="1200", height="600">
+  <img src="https://github.com/matthiashimmelmann/DisorderedPointClusters.jl/blob/main/pictures/MolecularConfiguration1.678112526442e9.png" width="1200", height="500">
 </p>
