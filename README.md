@@ -6,7 +6,7 @@ We consider point configurations in the 3-torus <img src="https://render.githubu
 
 ```
 julia> ]
-(@v1.8) pkg> add Implicit3DPlotting
+(@v1.8) pkg> add DisorderedPointClusters
 ```
 
 ## Usage
