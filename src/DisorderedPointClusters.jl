@@ -119,7 +119,7 @@ function monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method
   manhattanDistance = createListOfRelevantDistances(xs, NGrid, NGrid2; MD_Method = MD_Method, distance="manhattan")
   #PrioritizeSamePlane?
   energyFunction = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList) )  
-  energyFunctionManhattan = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+2)/NGrid ? 100/minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol))) : 0 for t in manhattanDistance)
+  energyFunctionManhattan = sol -> sum(1 ./ map(t->minimum(evaluate(t, xvarz=>sol)), distanceList)) + sum(minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+2)/NGrid ? 10000/minimum(map(t->sum(abs.(t)), evaluate.(t,xvarz=>sol))) : 0 for t in manhattanDistance)
   #energyFunctionSquare = sol -> energyFunction(sol) + sum(minimum(map(t->maximum(abs.(t)), evaluate.(t,xvarz=>sol)))<=(2*NeckSize+1)/NGrid ? 100/minimum(map(t->maximum(abs.(t)), evaluate.(t,xvarz=>sol))) : 0 for t in manhattanDistance)
 
   outputList = []
@@ -264,6 +264,6 @@ function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int
     generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
 
-generateGridLayers(50, 1, 4, 2; MD_Method="2D-3", maxIter = 15000, monteCarloStartPoints = 1)
+generateGridLayers(50, 8, 6, 3; MD_Method="2D-3", maxIter = 35000, monteCarloStartPoints = 2)
 
 end
