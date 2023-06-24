@@ -19,5 +19,5 @@ julia> generateGridLayers(50,7, 6, 3; MD_Method="2D-3", maxIter = 35000, monteCa
 
 The result of this can be seen in the following image: 
 <p align="center">
-  <img src="https://user-images.githubusercontent.com/65544132/114864346-2b0ec700-9df1-11eb-8ad4-4ef2d4e1c9f3.png" width="600", height="600">
+  <img src="https://github.com/matthiashimmelmann/DisorderedPointClusters.jl/blob/main/pictures/MolecularConfiguration1.686438587406e9.png" width="600", height="600">
 </p>
