@@ -14,7 +14,7 @@ julia> ]
 There are two main methods in this package: `plot_implicit_surface` and `plot_implicit_curve`. Let us first consider an example of the former:
 
 ```
-julia> generateGridLayers(50,7, 6, 3; MD_Method="2D-3", maxIter = 35000, monteCarloStartPoints = 2)
+julia> generateGridLayers(50, 7, 6, 3; MD_Method="2D-3", maxIter = 35000, monteCarloStartPoints = 2)
 ```
 
 The result of this can be seen in the following image: 
