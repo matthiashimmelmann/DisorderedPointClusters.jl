@@ -17,7 +17,7 @@ The method `generateGridLayers` takes as input the fineness of the grid (50), th
 julia> generateGridLayers(50, 7, 6, 3; MD_Method="2D-3", maxIter = 35000, monteCarloStartPoints = 2)
 ```
 
-The result of this can be seen in the following image: 
+This input results in the following image: 
 <p align="center">
   <img src="https://github.com/matthiashimmelmann/DisorderedPointClusters.jl/blob/main/pictures/MolecularConfiguration1.686438587406e9.png" width="900", height="450">
 </p>
