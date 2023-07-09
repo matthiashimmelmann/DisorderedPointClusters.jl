@@ -219,12 +219,13 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
             write(io, string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "1" : "2", "\n"))
         end
     end;
+    #=
     open("pomelocoordinates2.txt", "w") do io
         for i in 1:length([(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)])
             k = [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)][i]
             write(io, "$(i): ", string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "c(1, 0, 0, 1)" : "c(0, 0, 1, 1)", "\n"))
         end
-    end;
+    end;=#
 
     scene=Figure(resolution = (650, 650), fontsize=22)
     if MD_Method == "2D"
@@ -264,6 +265,6 @@ function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int
     generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
 
-generateGridLayers(50, 8, 6, 3; MD_Method="2D-3", maxIter = 35000, monteCarloStartPoints = 2)
+generateGridLayers(60, 6, 8, 3; MD_Method="2D-3", maxIter = 25000, monteCarloStartPoints = 2)
 
 end
