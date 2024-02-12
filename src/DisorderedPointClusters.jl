@@ -5,6 +5,7 @@ import GLMakie: scatter!, Axis3, Figure, Point3f0, Point2f0, Figure, cam3d!, Axi
 import LinearAlgebra: norm, det, pinv, svd
 import HomotopyContinuation: Variable, Expression, evaluate, differentiate
 import Combinatorics: multiexponents
+import Colors: RGBA
 
 export generateGridLayers
 
@@ -207,6 +208,18 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
     xs = createNeckMatrix(NeckArray; MD_Method = MD_Method)
     neckConfig = monteCarlo(xs, initialPoints, xvarz, NGrid, NGrid2, NeckSize; MD_Method = MD_Method, maxIter = maxIter)
 
+    open("catenoidcoordinates.poly", "w") do io
+        write(io, "POINTS\n")
+        for i in 1:4
+            p = neckConfig[1+8*(i-1):8+8*(i-1)]
+            for j in 1:4
+                write(io, string("$(j+(i-1)*4): ", p[1+(j-1)*2], " ", p[2+(j-1)*2], " ", (i-1)/4, "\n"))
+            end
+        end
+        write(io, "POLYS\n")
+        write(io, "END\n")
+    end;
+
     totalGrid = Array{Any,4}(undef, length(NeckArray), NGrid, NGrid2, 3)
     layerColours = Array{Any,3}(undef, length(NeckArray), NGrid, NGrid2)
     for layer in 1:length(NeckArray), pos1 in 0:NGrid-1, pos2 in 0:NGrid2-1
@@ -219,13 +232,16 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
             write(io, string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "1" : "2", "\n"))
         end
     end;
-    #=
-    open("pomelocoordinates2.txt", "w") do io
+    
+    open("pomelocoordinates2.poly", "w") do io
+        write(io, "POINTS\n")
         for i in 1:length([(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)])
             k = [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)][i]
             write(io, "$(i): ", string(totalGrid[k[1],k[2],k[3],1], " ", totalGrid[k[1],k[2],k[3],2], " ", totalGrid[k[1],k[2],k[3],3], " ", layerColours[k[1],k[2],k[3]] == 1 ? "c(1, 0, 0, 1)" : "c(0, 0, 1, 1)", "\n"))
         end
-    end;=#
+        write(io, "POLYS\n")
+        write(io, "END\n")
+    end;
 
     scene=Figure(resolution = (650, 650), fontsize=22)
     if MD_Method == "2D"
@@ -235,8 +251,8 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
         xs_eval = [[evaluate(xs[layer][pos], xvarz=>neckConfig) for pos in 1:NeckArray[layer]] for layer in 1:length(NeckArray)]
         foreach(k -> scatter!(ax, Point2f0(xs_eval[k[1]][k[2]][1:2]), color = mod(k[1],2)==0 ? :red : :blue, grid=true, markersize=17), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
     elseif MD_Method == "2D-3"
-        scene=Figure(resolution = (1800, 900), fontsize = 25, ticksize=18)
-        colors = repeat([:red, :green, :blue, :purple, :orange, :pink, :saddlebrown, :grey30], 20)
+        scene=Figure(resolution = (1800, 900), fontsize = 28, ticksize=18)
+        colors = repeat([RGBA{Float64}(0.9, 0.225, 0.5625, 1), RGBA{Float64}(0.1875, 0.1875, 0.75, 1), RGBA{Float64}(0.075, 0.75, 0.4125, 1), RGBA{Float64}(0.9, 0.9, 0.17, 1), :saddlebrown, :grey30], 20)
         xs_eval = [[evaluate(xs[layer][pos], xvarz=>neckConfig) for pos in 1:NeckArray[layer]] for layer in 1:length(NeckArray)]
         ax = vcat([Axis(scene[div(layer-1,2)+1, mod(layer-1,2)+1], title = "Layer = $(layer)", titlecolor=colors[layer]) for layer in 1:length(NeckArray)], Axis(scene[:,3:4], title = "All Layers together"))
         for layer in 1:length(NeckArray)
@@ -244,18 +260,19 @@ function generateGridLayers(NGrid::Int, NeckArray::Vector, NeckSize::Int; NGrid2
             layer2 = (layer==length(NeckArray)) ? 1 : layer+1
             xlims!(ax[layer], (0,1))
             ylims!(ax[layer], (0,1))
-            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer][k][1:2]), color = :black, markersize=17), 1:NeckArray[layer])
-            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer1][k][1:2]), color = :red, markersize=17), 1:NeckArray[layer1])
-            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer2][k][1:2]), color = :green, markersize=17), 1:NeckArray[layer2])
+            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer][k][1:2]), color = :black, markersize=19), 1:NeckArray[layer])
+            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer1][k][1:2]), color = :red, markersize=19), 1:NeckArray[layer1])
+            foreach(k -> scatter!(ax[layer], Point2f0(xs_eval[layer2][k][1:2]), color = :green, markersize=19), 1:NeckArray[layer2])
         end
         xlims!(ax[end], (0,1))
         ylims!(ax[end], (0,1))
-        foreach(k -> scatter!(ax[end], Point2f0(xs_eval[k[1]][k[2]][1:2]), color = colors[k[1]], markersize=17), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
+        foreach(k -> scatter!(ax[end], Point2f0(xs_eval[k[1]][k[2]][1:2]), color = colors[k[1]], markersize=19), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
     else
-        ax = Axis3(scene[1,1])
+        ax = Axis(scene[1,1])
         xlims!(ax, (0,1))
         ylims!(ax, (0,1))
-        foreach(k -> mod(layerColours[k[1],k[2],k[3]],2) != mod(k[1],2) ? scatter!(ax, Point3f0(totalGrid[k[1],k[2],k[3],:]), color=layerColours[k[1],k[2],k[3]] == 1 ? :red : :blue, grid=true) : nothing, [(layer,pos1,pos2) for pos1 in 1:NGrid for pos2 in 1:NGrid2 for layer in 1:length(NeckArray)])
+        xs_eval = [[evaluate(xs[layer][pos], xvarz=>neckConfig) for pos in 1:NeckArray[layer]] for layer in 1:length(NeckArray)]
+        foreach(k -> scatter!(ax, Point2f0(xs_eval[k[1]][k[2]][1:2]), color = mod(k[1],2)==0 ? :red : :blue, grid=true, markersize=17), [(i,j) for i in 1:size(xs_eval)[1] for j in 1:length(xs_eval[i])])
     end
     save("MolecularConfiguration$(Base.time()).png", scene)
     display(scene)
@@ -265,6 +282,6 @@ function generateGridLayers(NGrid::Int, NNecks::Int, NLayers::Int, NeckSize::Int
     generateGridLayers(NGrid, [NNecks for _ in 1:NLayers], NeckSize; NGrid2 = NGrid2, MD_Method = MD_Method, maxIter = maxIter, monteCarloStartPoints = monteCarloStartPoints)
 end
 
-generateGridLayers(60, 6, 8, 3; MD_Method="2D-3", maxIter = 25000, monteCarloStartPoints = 2)
+generateGridLayers(25, 4, 4, 2; MD_Method="2D-3", maxIter = 10000, monteCarloStartPoints = 2)
 
 end
