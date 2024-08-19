@@ -1,0 +1,232 @@
+PARAMETER period_xx =  1 
+PARAMETER period_yx =  0 
+PARAMETER period_zx =  0 
+PARAMETER period_xy =  0 
+PARAMETER period_yy =  1 
+PARAMETER period_zy =  0 
+PARAMETER period_xz =  0 
+PARAMETER period_yz =  0 
+PARAMETER period_zz =  1 
+
+TORUS
+PERIODS
+ period_xx period_yx period_zx
+ period_xy period_yy period_zy
+ period_xz period_yz period_zz
+
+
+
+
+
+help_xx := 1; help_xy := 0; help_xz := 0;
+help_yx := 0; help_yy := 1; help_yz := 0;
+help_zx := 0; help_zy := 0; help_zz := 1;
+
+c_scale:=1;
+
+xext := 1; yext := 1; zext := 1;
+calc_qr := { rxx := sqrt(help_xx*help_xx + help_xy*help_xy + help_xz*help_xz); 
+  rxy := 0; 
+  rxz := 0; 
+  qxx := help_xx/rxx; 
+  qxy := help_xy/rxx; 
+  qxz := help_xz/rxx; 
+  qyx := help_yx - (help_yx*qxx + help_yy*qxy + help_yz*qxz)*qxx; 
+  qyy := help_yy - (help_yx*qxx + help_yy*qxy + help_yz*qxz)*qxy; 
+  qyz := help_yz - (help_yx*qxx + help_yy*qxy + help_yz*qxz)*qxz; 
+  ryx := help_yx*qxx + help_yy*qxy + help_yz*qxz; 
+  ryy := sqrt(qyx*qyx + qyy*qyy + qyz*qyz); 
+  ryz := 0; 
+  qyx := qyx/ryy; 
+  qyy := qyy/ryy; 
+  qyz := qyz/ryy; 
+  qzx := help_zx - (help_zx*qxx + help_zy*qxy + help_zz*qxz)*qxx - 
+    (help_zx*qyx + help_zy*qyy + help_zz*qyz)*qyx; 
+  qzy := help_zy - (help_zx*qxx + help_zy*qxy + help_zz*qxz)*qxy - 
+    (help_zx*qyx + help_zy*qyy + help_zz*qyz)*qyy; 
+  qzz := help_zz - (help_zx*qxx + help_zy*qxy + help_zz*qxz)*qxz - 
+    (help_zx*qyx + help_zy*qyy + help_zz*qyz)*qyz; 
+  rzx := help_zx*qxx + help_zy*qxy + help_zz*qxz; 
+  rzy := help_zx*qyx + help_zy*qyy + help_zz*qyz; 
+  rzz := sqrt(qzx*qzx + qzy*qzy + qzz*qzz); 
+  qzx := qzx/rzz; 
+  qzy := qzy/rzz; 
+  qzz := qzz/rzz
+}
+inv_mat := { det := help_xx*help_yy*help_zz + help_xy*help_yz*help_zx + 
+    help_xz*help_yx*help_zy - help_xx*help_yz*help_zy - 
+    help_xy*help_yx*help_zz - help_xz*help_yy*help_zx; 
+  adj_xx := help_yy*help_zz - help_zy*help_yz; 
+  adj_yx := -(help_xy*help_zz - help_xz*help_zy); 
+  adj_zx := help_xy*help_yz - help_yy*help_xz; 
+  adj_xy := -(help_xy*help_zz - help_zy*help_xz); 
+  adj_yy := help_xx*help_zz - help_xz*help_zx; 
+  adj_zy := -(help_xx*help_yz - help_yx*help_xz); 
+  adj_xz := help_xy*help_yz - help_zx*help_yy; 
+  adj_yz := -(help_xx*help_zy - help_zx*help_xy); 
+  adj_zz := help_xx*help_yy - help_xy*help_yx; 
+  inv_xx := adj_xx/det; 
+  inv_yx := adj_yx/det; 
+  inv_zx := adj_zx/det; 
+  inv_xy := adj_xy/det; 
+  inv_yy := adj_yy/det; 
+  inv_zy := adj_zy/det; 
+  inv_xz := adj_xz/det; 
+  inv_yz := adj_yz/det; 
+  inv_zz := adj_zz/det; 
+  printf " [%f %f %f;\n %f %f %f;\n %f %f %f]", 
+    inv_xx, inv_yx, inv_zx, inv_xy, inv_yy, inv_zy, inv_xz, inv_yz, inv_zz
+}
+calc_minkowski_tensors := { Wxx := 0; 
+  Wyx := 0; 
+  Wzx := 0; 
+  Wxy := 0; 
+  Wyy := 0; 
+  Wzy := 0; 
+  Wxz := 0; 
+  Wyz := 0; 
+  Wzz := 0; 
+  foreach facets ff do 
+    { Wxx := Wxx + ff.x*ff.x/(ff.area); 
+      Wxy := Wxy + ff.x*ff.y/(ff.area); 
+      Wxz := Wxz + ff.x*ff.z/(ff.area); 
+      Wyx := Wyx + ff.y*ff.x/(ff.area); 
+      Wyy := Wyy + ff.y*ff.y/(ff.area); 
+      Wyz := Wyz + ff.y*ff.z/(ff.area); 
+      Wzx := Wzx + ff.z*ff.x/(ff.area); 
+      Wzy := Wzy + ff.z*ff.y/(ff.area); 
+      Wzz := Wzz + ff.z*ff.z/(ff.area)
+    }; 
+  print "Minkowski Tensor W_1^{02}"; 
+  printf " %f %f %f\n %f %f %f\n %f %f %f\n", 
+    Wxx, Wxy, Wxz, Wyx, Wyy, Wyz, Wzx, Wzy, Wzz; 
+  help_xx := Wxx; 
+  help_xy := Wxy; 
+  help_xz := Wxz; 
+  help_yx := Wyx; 
+  help_yy := Wyy; 
+  help_yz := Wyz; 
+  help_zx := Wzx; 
+  help_zy := Wzy; 
+  help_zz := Wzz; 
+  finalq_xx := 1; 
+  finalq_xy := 0; 
+  finalq_xz := 0; 
+  finalq_yx := 0; 
+  finalq_yy := 1; 
+  finalq_yz := 0; 
+  finalq_zx := 0; 
+  finalq_zy := 0; 
+  finalq_zz := 1; 
+  for ( ind := 1 ; ind < 100000 ; ind++ ) 
+    { calc_qr; 
+      help_xx := rxx*qxx + ryx*qxy + rzx*qxz; 
+      help_yx := rxx*qyx + ryx*qyy + rzx*qyz; 
+      help_zx := rxx*qzx + ryx*qzy + rzx*qzz; 
+      help_xy := rxy*qxx + ryy*qxy + rzy*qxz; 
+      help_yy := rxy*qyx + ryy*qyy + rzy*qyz; 
+      help_zy := rxy*qzx + ryy*qzy + rzy*qzz; 
+      help_xz := rxz*qxx + ryz*qxy + rzz*qxz; 
+      help_yz := rxz*qyx + ryz*qyy + rzz*qyz; 
+      help_zz := rxz*qzx + ryz*qzy + rzz*qzz; 
+      helperq_xx := finalq_xx*qxx + finalq_yx*qxy + finalq_zx*qxz; 
+      helperq_yx := finalq_xx*qyx + finalq_yx*qyy + finalq_zx*qyz; 
+      helperq_zx := finalq_xx*qzx + finalq_yx*qzy + finalq_zx*qzz; 
+      helperq_xy := finalq_xy*qxx + finalq_yy*qxy + finalq_zy*qxz; 
+      helperq_yy := finalq_xy*qyx + finalq_yy*qyy + finalq_zy*qyz; 
+      helperq_zy := finalq_xy*qzx + finalq_yy*qzy + finalq_zy*qzz; 
+      helperq_xz := finalq_xz*qxx + finalq_yz*qxy + finalq_zz*qxz; 
+      helperq_yz := finalq_xz*qyx + finalq_yz*qyy + finalq_zz*qyz; 
+      helperq_zz := finalq_xz*qzx + finalq_yz*qzy + finalq_zz*qzz; 
+      finalq_xx := helperq_xx; 
+      finalq_yx := helperq_yx; 
+      finalq_zx := helperq_zx; 
+      finalq_xy := helperq_xy; 
+      finalq_yy := helperq_yy; 
+      finalq_zy := helperq_zy; 
+      finalq_xz := helperq_xz; 
+      finalq_yz := helperq_yz; 
+      finalq_zz := helperq_zz
+    };
+
+  xext := rxx; yext := ryy; zext := rzz;
+  rxx := xext/(xext*yext*zext)**0.333333333333333; 
+  ryy := yext/(xext*yext*zext)**0.333333333333333; 
+  rzz := zext/(xext*yext*zext)**0.333333333333333; 
+  scaling := (c_scale**3 + rxx*ryy*rzz + c_scale**2*rxx + c_scale**2*ryy + c_scale**2*rzz + c_scale*rxx*ryy + c_scale*rxx*rzz 
+    + c_scale*ryy*rzz)**0.333333333333333; 
+  printf "\n R-det %f: \n",rxx*ryy*rzz; 
+  printf "\n damped R-det %f: \n",(c_scale + rxx)/scaling*(c_scale + ryy)/scaling* 
+    (c_scale + rzz)/scaling; 
+  printf "\n R: \n"; 
+  printf " %f %f %f\n %f %f %f\n %f %f %f\n", 
+    rxx, ryx, rzx, rxy, ryy, rzy, rxz, ryz, rzz; 
+  printf "\n Q: \n"; 
+  printf " %f %f %f\n %f %f %f\n %f %f %f\n", 
+    finalq_xx, finalq_yx, finalq_zx, finalq_xy, finalq_yy, finalq_zy, 
+    finalq_xz, finalq_yz, finalq_zz; 
+  helperperiod_xx := finalq_xx*period_xx + finalq_xy*period_xy + finalq_xz*period_xz; 
+  helperperiod_yx := finalq_xx*period_yx + finalq_xy*period_yy + finalq_xz*period_yz; 
+  helperperiod_zx := finalq_xx*period_zx + finalq_xy*period_zy + finalq_xz*period_zz; 
+  helperperiod_xy := finalq_yx*period_xx + finalq_yy*period_xy + finalq_yz*period_xz; 
+  helperperiod_yy := finalq_yx*period_yx + finalq_yy*period_yy + finalq_yz*period_yz; 
+  helperperiod_zy := finalq_yx*period_zx + finalq_yy*period_zy + finalq_yz*period_zz; 
+  helperperiod_xz := finalq_zx*period_xx + finalq_zy*period_xy + finalq_zz*period_xz; 
+  helperperiod_yz := finalq_zx*period_yx + finalq_zy*period_yy + finalq_zz*period_yz; 
+  helperperiod_zz := finalq_zx*period_zx + finalq_zy*period_zy + finalq_zz*period_zz; 
+  period_xx := helperperiod_xx; 
+  period_yx := helperperiod_yx; 
+  period_zx := helperperiod_zx; 
+  period_xy := helperperiod_xy; 
+  period_yy := helperperiod_yy; 
+  period_zy := helperperiod_zy; 
+  period_xz := helperperiod_xz; 
+  period_yz := helperperiod_yz; 
+  period_zz := helperperiod_zz; 
+  period_xx := period_xx*(c_scale + rxx)/scaling; 
+  period_yx := period_yx*(c_scale + rxx)/scaling; 
+  period_zx := period_zx*(c_scale + rxx)/scaling; 
+  period_xy := period_xy*(c_scale + ryy)/scaling; 
+  period_yy := period_yy*(c_scale + ryy)/scaling; 
+  period_zy := period_zy*(c_scale + ryy)/scaling; 
+  period_xz := period_xz*(c_scale + rzz)/scaling; 
+  period_yz := period_yz*(c_scale + rzz)/scaling; 
+  period_zz := period_zz*(c_scale + rzz)/scaling; 
+  helperperiod_xx := finalq_xx*period_xx + finalq_yx*period_xy + finalq_zx*period_xz; 
+  helperperiod_yx := finalq_xx*period_yx + finalq_yx*period_yy + finalq_zx*period_yz; 
+  helperperiod_zx := finalq_xx*period_zx + finalq_yx*period_zy + finalq_zx*period_zz; 
+  helperperiod_xy := finalq_xy*period_xx + finalq_yy*period_xy + finalq_zy*period_xz; 
+  helperperiod_yy := finalq_xy*period_yx + finalq_yy*period_yy + finalq_zy*period_yz; 
+  helperperiod_zy := finalq_xy*period_zx + finalq_yy*period_zy + finalq_zy*period_zz; 
+  helperperiod_xz := finalq_xz*period_xx + finalq_yz*period_xy + finalq_zz*period_xz; 
+  helperperiod_yz := finalq_xz*period_yx + finalq_yz*period_yy + finalq_zz*period_yz; 
+  helperperiod_zz := finalq_xz*period_zx + finalq_yz*period_zy + finalq_zz*period_zz; 
+  period_xx := helperperiod_xx; 
+  period_yx := helperperiod_yx; 
+  period_zx := helperperiod_zx; 
+  period_xy := helperperiod_xy; 
+  period_yy := helperperiod_yy; 
+  period_zy := helperperiod_zy; 
+  period_xz := helperperiod_xz; 
+  period_yz := helperperiod_yz; 
+  period_zz := helperperiod_zz; 
+  printf "\n new periods: \n"; 
+  printf " [%f %f %f;\n %f %f %f;\n %f %f %f]\n", 
+    period_xx, period_yx, period_zx, period_xy, period_yy, period_zy,
+    period_xz, period_yz, period_zz;
+  foreach vertices vv do
+    { hx := finalq_xx*vv.x + finalq_xy*vv.y + finalq_xz*vv.z;
+      hy := finalq_yx*vv.x + finalq_yy*vv.y + finalq_yz*vv.z;
+      hz := finalq_zx*vv.x + finalq_zy*vv.y + finalq_zz*vv.z;
+      vv.x := (hx*(c_scale + rxx)/scaling); 
+      vv.y := (hy*(c_scale + ryy)/scaling); 
+      vv.z := (hz*(c_scale + rzz)/scaling); 
+      hx := finalq_xx*vv.x + finalq_yx*vv.y + finalq_zx*vv.z; 
+      hy := finalq_xy*vv.x + finalq_yy*vv.y + finalq_zy*vv.z; 
+      hz := finalq_xz*vv.x + finalq_yz*vv.y + finalq_zz*vv.z; 
+      vv.x := (hx); 
+      vv.y := (hy); 
+      vv.z := (hz)
+    }; 
+  recalc 
+}
